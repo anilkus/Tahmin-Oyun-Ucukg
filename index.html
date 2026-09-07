@@ -59,9 +59,11 @@
 
   .new-match{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:16px; margin-bottom:8px; }
   .new-match .grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
-  .new-match input{ width:100%; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
+  .new-match input, .new-match select{ width:100%; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
   .new-match label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
   .new-match .full{ grid-column:1 / -1; }
+  .new-match .date-grid{ display:grid; grid-template-columns:1fr 1.4fr 1fr; gap:8px; margin-bottom:8px; }
+  .new-match .time-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
 
   .league{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:6px 0; margin-bottom:10px; }
   .league .lrow{ display:flex; align-items:center; justify-content:space-between; padding:12px 18px; }
@@ -223,13 +225,42 @@ function renderLeague(list){
   `;
 }
 
+const AYLAR = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+
 function renderNewMatchForm(){
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curDay = now.getDate();
+  const curMonth = now.getMonth(); // 0-11
+  const curHour = now.getHours();
+
+  const dayOpts = Array.from({length:31}, (_,i)=>i+1)
+    .map(d => `<option value="${d}" ${d===curDay?'selected':''}>${d}</option>`).join("");
+  const monthOpts = AYLAR
+    .map((m,i) => `<option value="${i}" ${i===curMonth?'selected':''}>${m}</option>`).join("");
+  const yearOpts = [curYear, curYear+1]
+    .map(y => `<option value="${y}">${y}</option>`).join("");
+  const hourOpts = Array.from({length:24}, (_,i)=>i)
+    .map(h => `<option value="${h}" ${h===curHour?'selected':''}>${String(h).padStart(2,'0')}</option>`).join("");
+  const minuteOpts = Array.from({length:60}, (_,i)=>i)
+    .map(mi => `<option value="${mi}">${String(mi).padStart(2,'0')}</option>`).join("");
+
   return `
     <div class="new-match">
       <div class="grid">
         <div><label>Ev sahibi</label><input id="homeTeam" placeholder="örn. Galatasaray"></div>
         <div><label>Deplasman</label><input id="awayTeam" placeholder="örn. Fenerbahçe"></div>
-        <div class="full"><label>Maç saati</label><input id="kickoffInput" type="datetime-local"></div>
+      </div>
+      <label>Maç tarihi</label>
+      <div class="date-grid">
+        <select id="dayInput">${dayOpts}</select>
+        <select id="monthInput">${monthOpts}</select>
+        <select id="yearInput">${yearOpts}</select>
+      </div>
+      <label>Maç saati (senin tarayıcı saatine göre)</label>
+      <div class="time-grid">
+        <select id="hourInput">${hourOpts}</select>
+        <select id="minuteInput">${minuteOpts}</select>
       </div>
       <button class="btn" id="createMatchBtn">Maçı oluştur</button>
       <div class="save-status" id="newMatchStatus"></div>
@@ -346,16 +377,33 @@ function bindEvents(){
     createBtn.onclick = async () => {
       const home = document.getElementById("homeTeam").value.trim();
       const away = document.getElementById("awayTeam").value.trim();
-      const kickoffVal = document.getElementById("kickoffInput").value;
       const status = document.getElementById("newMatchStatus");
-      if (!home || !away || !kickoffVal) return;
-      const kickoff = new Date(kickoffVal).toISOString();
+      if (!home || !away){
+        status.textContent = "Takım isimlerini gir."; status.className = "save-status error";
+        return;
+      }
+      const day = Number(document.getElementById("dayInput").value);
+      const month = Number(document.getElementById("monthInput").value);
+      const year = Number(document.getElementById("yearInput").value);
+      const hour = Number(document.getElementById("hourInput").value);
+      const minute = Number(document.getElementById("minuteInput").value);
+      // Tarayıcının kendi yerel saatine göre bir Date oluşturuyoruz (UTC'ye çevirmiyoruz burada,
+      // new Date(y,m,d,h,mi) zaten tarayıcının local saatini kullanır).
+      const kickoffDate = new Date(year, month, day, hour, minute, 0);
+      if (isNaN(kickoffDate.getTime())){
+        status.textContent = "Geçersiz tarih."; status.className = "save-status error";
+        return;
+      }
+      const kickoff = kickoffDate.toISOString();
       const newId = String(Date.now());
       state.matches.push({ id: newId, home, away, kickoff, predictions: {}, result: null, points: null, published: false });
       createBtn.disabled = true;
       status.textContent = "Kaydediliyor…"; status.className = "save-status";
       try{ await saveData(); render(); }
-      catch(e){ status.textContent = "Kaydedilemedi, tekrar dene."; status.className = "save-status error"; createBtn.disabled = false; }
+      catch(e){
+        state.matches.pop();
+        status.textContent = "Kaydedilemedi, tekrar dene."; status.className = "save-status error"; createBtn.disabled = false;
+      }
     };
   }
 
