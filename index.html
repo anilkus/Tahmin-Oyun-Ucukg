@@ -40,10 +40,10 @@
     color:var(--chalk); font-family:'Inter',sans-serif; min-height:100vh; padding-bottom:60px;
   }
   h1,.num{ font-family:'Oswald',sans-serif; letter-spacing:.01em; }
-  .wrap{ max-width:640px; margin:0 auto; padding:0 18px; }
+  .wrap{ max-width:640px; margin:0 auto; padding:24px 18px 0; }
 
   header.top{
-    border-bottom:1px solid var(--card-border); padding:22px 0 16px; margin-bottom:26px;
+    border-bottom:1px solid var(--card-border); padding:0 0 16px; margin-bottom:26px;
     display:flex; justify-content:space-between; align-items:baseline;
   }
   header.top h1{ font-size:28px; font-weight:700; margin:0; }
@@ -51,7 +51,8 @@
   .whoami{ font-size:13px; color:var(--chalk-dim); text-align:right; }
   .whoami button{ background:none; border:none; color:var(--amber); font-size:13px; cursor:pointer; padding:0; margin-left:8px; text-decoration:underline; }
 
-  .login-card{ max-width:340px; margin:80px auto; text-align:center; }
+  .login-card{ max-width:340px; margin:30px auto 60px; text-align:center; }
+  .wrap > .ticker-section:first-child, .wrap > .league:first-child{ margin-top:24px; }
   .login-card h1{ font-size:26px; margin-bottom:6px; }
   .login-card p{ color:var(--chalk-dim); font-size:14px; margin-bottom:32px; }
   .player-pick{ display:flex; gap:12px; margin-bottom:16px; }
@@ -271,8 +272,17 @@ function render(){
   bindEvents();
 }
 
+function getMatchList(){
+  return state.matches.map(m => ({...m, kickoffMs: new Date(m.kickoff).getTime()}));
+}
+
 function renderLogin(){
+  const list = getMatchList();
   return `
+    ${renderTicker(false)}
+
+    ${renderLeague(list)}
+
     <div class="login-card">
       <h1>Skor Tahmin <span>Ligi</span></h1>
       <p>Maçtan önce tahminini gir, maç saatinde skorlar açılır.</p>
@@ -287,7 +297,7 @@ function renderLogin(){
   `;
 }
 
-function renderTicker(){
+function renderTicker(showForm = true){
   const sorted = [...state.comments].sort((a,b)=>a.createdAt-b.createdAt);
   let track;
   if (sorted.length){
@@ -296,17 +306,19 @@ function renderTicker(){
     `).join("");
     track = `<div class="ticker-track">${itemsHtml}${itemsHtml}</div>`;
   } else {
-    track = `<div class="ticker-track" style="animation:none;"><span class="ticker-item">Henüz yorum yok, ilk yorumu sen yaz.</span></div>`;
+    track = `<div class="ticker-track" style="animation:none;"><span class="ticker-item">Henüz yorum yok.</span></div>`;
   }
   return `
     <div class="ticker-section">
       <div class="ticker-title">Futbol Yorumları</div>
       <div class="ticker-box">${track}</div>
-      <div class="comment-form">
-        <input id="commentInput" placeholder="Yorumunu yaz…" maxlength="140">
-        <button id="commentSendBtn">Gönder</button>
-      </div>
-      <div class="save-status" id="commentStatus"></div>
+      ${showForm ? `
+        <div class="comment-form">
+          <input id="commentInput" placeholder="Yorumunu yaz…" maxlength="140">
+          <button id="commentSendBtn">Gönder</button>
+        </div>
+        <div class="save-status" id="commentStatus"></div>
+      ` : ""}
     </div>
   `;
 }
@@ -314,7 +326,7 @@ function renderTicker(){
 function renderApp(){
   const isAdmin = state.user === "anil";
   const now = Date.now();
-  const list = state.matches.map(m => ({...m, kickoffMs: new Date(m.kickoff).getTime()}));
+  const list = getMatchList();
   const upcoming = list.filter(m => m.kickoffMs > now).sort((a,b)=>a.kickoffMs-b.kickoffMs);
   const past = list.filter(m => m.kickoffMs <= now).sort((a,b)=>b.kickoffMs-a.kickoffMs);
 
