@@ -157,6 +157,19 @@
   }
   .approve-btn{ background:var(--turf); color:#06210f; }
   .reject-btn{ background:none; border:1px solid var(--card-border) !important; color:var(--chalk-dim); }
+
+  .ticker-section{ margin-bottom:24px; }
+  .ticker-title{ font-size:13px; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:10px; }
+  .ticker-title::after{ content:""; flex:1; height:1px; background:var(--card-border); }
+  .ticker-box{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); overflow:hidden; padding:12px 0; }
+  .ticker-track{ display:inline-flex; white-space:nowrap; animation: ticker-scroll 30s linear infinite; }
+  .ticker-item{ display:inline-flex; align-items:baseline; padding:0 28px; font-size:13px; color:var(--chalk-dim); }
+  .ticker-item b{ color:var(--amber); margin-right:6px; font-family:'Oswald',sans-serif; }
+  .ticker-item .tdate{ color:var(--muted); margin-left:8px; font-size:11px; }
+  @keyframes ticker-scroll{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+  .comment-form{ display:flex; gap:8px; margin-top:10px; }
+  .comment-form input{ flex:1; padding:9px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
+  .comment-form button{ padding:9px 16px; background:var(--amber); border:none; border-radius:8px; color:#1a1204; font-weight:600; font-size:13px; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -171,12 +184,14 @@ const db = firebase.database();
 const matchesRef = db.ref("matches");
 const keysRef = db.ref("keys");
 const suggestionsRef = db.ref("suggestions");
+const commentsRef = db.ref("comments");
 
 let state = {
   user: localStorage.getItem("skor_user") || null,
   loginPick: "anil",
   matches: [],
   suggestions: [],
+  comments: [],
   keys: { anil: CONFIG.ANIL_KEY, semih: CONFIG.SEMIH_KEY },
   showPasswordForm: false,
   passwordMsg: "",
@@ -193,6 +208,14 @@ async function saveKey(user, newKey){
 
 async function saveSuggestions(){
   await suggestionsRef.set(state.suggestions);
+}
+
+async function saveComments(){
+  await commentsRef.set(state.comments);
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 
 // ---------------- PUAN HESAPLAMA ----------------
@@ -264,6 +287,30 @@ function renderLogin(){
   `;
 }
 
+function renderTicker(){
+  const sorted = [...state.comments].sort((a,b)=>a.createdAt-b.createdAt);
+  let track;
+  if (sorted.length){
+    const itemsHtml = sorted.map(c => `
+      <span class="ticker-item"><b>${PLAYERS[c.user]}:</b>${escapeHtml(c.text)}<span class="tdate">${new Date(c.createdAt).toLocaleDateString("tr-TR",{day:"2-digit",month:"2-digit"})}</span></span>
+    `).join("");
+    track = `<div class="ticker-track">${itemsHtml}${itemsHtml}</div>`;
+  } else {
+    track = `<div class="ticker-track" style="animation:none;"><span class="ticker-item">Henüz yorum yok, ilk yorumu sen yaz.</span></div>`;
+  }
+  return `
+    <div class="ticker-section">
+      <div class="ticker-title">Futbol Yorumları</div>
+      <div class="ticker-box">${track}</div>
+      <div class="comment-form">
+        <input id="commentInput" placeholder="Yorumunu yaz…" maxlength="140">
+        <button id="commentSendBtn">Gönder</button>
+      </div>
+      <div class="save-status" id="commentStatus"></div>
+    </div>
+  `;
+}
+
 function renderApp(){
   const isAdmin = state.user === "anil";
   const now = Date.now();
@@ -280,6 +327,8 @@ function renderApp(){
       <h1>Skor Tahmin <span>Ligi</span></h1>
       <div class="whoami">${PLAYERS[state.user]} olarak giriş yaptın<button id="pwToggleBtn">şifre değiştir</button><button id="logoutBtn">çıkış</button></div>
     </header>
+
+    ${renderTicker()}
 
     ${newlyPublished.length ? renderNotifyBanner(newlyPublished) : ""}
 
@@ -571,6 +620,30 @@ function bindEvents(){
     };
   }
 
+  const commentSendBtn = document.getElementById("commentSendBtn");
+  if (commentSendBtn){
+    const sendComment = async () => {
+      const input = document.getElementById("commentInput");
+      const text = input.value.trim();
+      const status = document.getElementById("commentStatus");
+      if (!text) return;
+      const newComment = { id: String(Date.now()), user: state.user, text, createdAt: Date.now() };
+      state.comments.push(newComment);
+      commentSendBtn.disabled = true;
+      status.textContent = "Gönderiliyor…"; status.className = "save-status";
+      try{
+        await saveComments();
+        render();
+      }catch(e){
+        state.comments.pop();
+        status.textContent = "Gönderilemedi: " + e.message; status.className = "save-status error";
+        commentSendBtn.disabled = false;
+      }
+    };
+    commentSendBtn.onclick = sendComment;
+    document.getElementById("commentInput").addEventListener("keydown", e => { if (e.key === "Enter") sendComment(); });
+  }
+
   const pwToggleBtn = document.getElementById("pwToggleBtn");
   if (pwToggleBtn){
     pwToggleBtn.onclick = () => {
@@ -829,6 +902,11 @@ matchesRef.on("value", snap => {
 
 suggestionsRef.on("value", snap => {
   state.suggestions = snap.val() || [];
+  render();
+});
+
+commentsRef.on("value", snap => {
+  state.comments = snap.val() || [];
   render();
 });
 </script>
