@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skor Tahmin Ligi</title>
+
+<!-- Kurulum için README.md'ye bak. Buraya kendi gist ID, token ve
+     şifrelerini yapıştır. -->
+<script>
+  const CONFIG = {
+    GIST_ID: "565a9a287515ea5008d7526953a34a3d",
+    GITHUB_TOKEN: "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",
+    ANIL_KEY: "1992Anil",
+    SEMIH_KEY: "1990Semih"
+  };
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg: #0d1712; --bg-alt: #101d16; --card: #16241c; --card-border: #2a3a2e;
+    --chalk: #f2efe6; --chalk-dim: #b9c2b7; --muted: #6e8071;
+    --amber: #e8a33d; --turf: #4caf7d; --lock: #55645a; --danger:#c66b5a;
+    --radius: 10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background: radial-gradient(ellipse at top, #16281d 0%, var(--bg) 55%);
+    color:var(--chalk); font-family:'Inter',sans-serif; min-height:100vh; padding-bottom:60px;
+  }
+  h1,.num{ font-family:'Oswald',sans-serif; letter-spacing:.01em; }
+  .wrap{ max-width:640px; margin:0 auto; padding:0 18px; }
+
+  header.top{
+    border-bottom:1px solid var(--card-border); padding:22px 0 16px; margin-bottom:26px;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  header.top h1{ font-size:28px; font-weight:700; margin:0; }
+  header.top h1 span{ color:var(--amber); }
+  .whoami{ font-size:13px; color:var(--chalk-dim); text-align:right; }
+  .whoami button{ background:none; border:none; color:var(--amber); font-size:13px; cursor:pointer; padding:0; margin-left:8px; text-decoration:underline; }
+
+  .login-card{ max-width:340px; margin:80px auto; text-align:center; }
+  .login-card h1{ font-size:26px; margin-bottom:6px; }
+  .login-card p{ color:var(--chalk-dim); font-size:14px; margin-bottom:32px; }
+  .player-pick{ display:flex; gap:12px; margin-bottom:16px; }
+  .player-pick button{ flex:1; padding:14px 0; background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); color:var(--chalk); font-family:'Oswald',sans-serif; font-size:16px; cursor:pointer; }
+  .player-pick button.active{ border-color:var(--amber); color:var(--amber); }
+  .login-card input[type=password]{ width:100%; padding:12px 14px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:var(--radius); color:var(--chalk); font-size:15px; margin-bottom:14px; }
+  .btn{ width:100%; padding:13px 0; background:var(--amber); border:none; border-radius:var(--radius); color:#1a1204; font-weight:600; font-size:15px; cursor:pointer; }
+  .btn:disabled{ opacity:.5; cursor:default; }
+  .err{ color:var(--danger); font-size:13px; margin-top:-6px; margin-bottom:12px; min-height:16px; }
+
+  .section-title{ font-size:13px; color:var(--muted); margin:30px 0 12px; display:flex; align-items:center; gap:10px; }
+  .section-title::after{ content:""; flex:1; height:1px; background:var(--card-border); }
+
+  .new-match{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:16px; margin-bottom:8px; }
+  .new-match .grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .new-match input{ width:100%; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
+  .new-match label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+  .new-match .full{ grid-column:1 / -1; }
+
+  .league{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:6px 0; margin-bottom:10px; }
+  .league .lrow{ display:flex; align-items:center; justify-content:space-between; padding:12px 18px; }
+  .league .lrow + .lrow{ border-top:1px solid var(--card-border); }
+  .league .lname{ font-family:'Oswald',sans-serif; font-size:16px; display:flex; align-items:center; gap:10px; }
+  .league .rank{ color:var(--muted); font-size:13px; width:16px; }
+  .league .lname.leader{ color:var(--amber); }
+  .league .lpts{ font-family:'Oswald',sans-serif; font-size:22px; }
+
+  .ticket{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); margin-bottom:14px; overflow:hidden; }
+  .ticket .head{ display:flex; justify-content:space-between; align-items:center; padding:14px 16px 10px; }
+  .teams{ font-size:17px; font-weight:600; font-family:'Oswald',sans-serif; }
+  .teams .vs{ color:var(--muted); font-size:13px; margin:0 6px; font-family:'Inter',sans-serif; }
+  .kickoff{ font-size:12px; color:var(--muted); }
+  .kickoff.live{ color:var(--amber); }
+  .divider{ border-top:1px dashed var(--card-border); margin:0 16px; }
+  .body{ padding:14px 16px 16px; }
+
+  .preds{ display:flex; gap:10px; }
+  .pred-box{ flex:1; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; padding:10px 12px; }
+  .pred-box .name{ font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .pred-box .val{ font-family:'Oswald',sans-serif; font-size:22px; }
+  .pred-box.locked .val{ color:var(--lock); font-size:14px; }
+  .pred-box .tick{ color:var(--turf); }
+  .pred-box .dash{ color:var(--muted); }
+
+  .predict-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .predict-row input{ width:56px; text-align:center; padding:9px 0; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-family:'Oswald',sans-serif; font-size:18px; }
+  .predict-row .dash-sep{ color:var(--muted); font-family:'Oswald',sans-serif; }
+  .predict-row .save-btn{ padding:9px 16px; background:var(--amber); border:none; border-radius:8px; color:#1a1204; font-weight:600; font-size:13px; cursor:pointer; margin-left:auto; }
+  .predict-row .save-btn:disabled{ opacity:.6; cursor:default; }
+  .save-status{ font-size:12px; color:var(--turf); margin-bottom:10px; }
+  .save-status.error{ color:var(--danger); }
+
+  .result-line{ display:flex; align-items:center; gap:10px; margin-top:12px; padding-top:12px; border-top:1px solid var(--card-border); }
+  .result-line .score{ font-family:'Oswald',sans-serif; font-size:24px; color:var(--amber); }
+  .result-line .tag{ font-size:11px; color:var(--turf); border:1px solid var(--turf); border-radius:20px; padding:2px 8px; }
+  .pending{ font-size:13px; color:var(--muted); margin-top:12px; padding-top:12px; border-top:1px solid var(--card-border); }
+
+  .points-row{ display:flex; gap:10px; margin-top:10px; }
+  .points-pill{ flex:1; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; }
+  .points-pill .name{ font-size:13px; color:var(--chalk-dim); }
+  .points-pill .pts{ font-family:'Oswald',sans-serif; font-size:18px; color:var(--amber); }
+
+  .admin-form{ margin-top:12px; padding-top:12px; border-top:1px dashed var(--card-border); }
+  .admin-form .label{ font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .admin-form .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+  .admin-form input{ width:100%; padding:8px 10px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
+  .admin-form .publish-btn{ width:100%; padding:11px 0; background:var(--turf); border:none; border-radius:8px; color:#06210f; font-weight:600; cursor:pointer; }
+  .admin-form .publish-btn:disabled{ opacity:.6; cursor:default; }
+
+  .empty{ color:var(--muted); font-size:14px; padding:20px 0; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="empty">yükleniyor…</div>
+</div>
+
+<script>
+const PLAYERS = { anil: "Anıl", semih: "Semih" };
+const GIST_API = `https://api.github.com/gists/${CONFIG.GIST_ID}`;
+
+let state = {
+  user: localStorage.getItem("skor_user") || null,
+  loginPick: "anil",
+  matches: [],
+};
+
+// ---------------- GIST OKUMA / YAZMA ----------------
+async function loadData(){
+  const res = await fetch(GIST_API);
+  const gist = await res.json();
+  const content = gist.files["data.json"].content;
+  state.matches = JSON.parse(content);
+  render();
+}
+
+async function saveData(){
+  const res = await fetch(GIST_API, {
+    method: "PATCH",
+    headers: {
+      "Authorization": `token ${CONFIG.GITHUB_TOKEN}`,
+      "Accept": "application/vnd.github+json"
+    },
+    body: JSON.stringify({
+      files: { "data.json": { content: JSON.stringify(state.matches, null, 2) } }
+    })
+  });
+  if (!res.ok) throw new Error("save failed");
+}
+
+// ---------------- RENDER ----------------
+function render(){
+  document.getElementById("app").innerHTML = state.user ? renderApp() : renderLogin();
+  bindEvents();
+}
+
+function renderLogin(){
+  return `
+    <div class="login-card">
+      <h1>Skor Tahmin <span>Ligi</span></h1>
+      <p>Maçtan önce tahminini gir, maç saatinde skorlar açılır.</p>
+      <div class="player-pick">
+        <button data-pick="anil" class="${state.loginPick==='anil'?'active':''}">Anıl</button>
+        <button data-pick="semih" class="${state.loginPick==='semih'?'active':''}">Semih</button>
+      </div>
+      <input type="password" id="keyInput" placeholder="Şifre" autocomplete="off">
+      <div class="err" id="loginErr"></div>
+      <button class="btn" id="loginBtn">Giriş yap</button>
+    </div>
+  `;
+}
+
+function renderApp(){
+  const isAdmin = state.user === "anil";
+  const now = Date.now();
+  const list = state.matches.map(m => ({...m, kickoffMs: new Date(m.kickoff).getTime()}));
+  const upcoming = list.filter(m => m.kickoffMs > now).sort((a,b)=>a.kickoffMs-b.kickoffMs);
+  const past = list.filter(m => m.kickoffMs <= now).sort((a,b)=>b.kickoffMs-a.kickoffMs);
+
+  return `
+    <header class="top">
+      <h1>Skor Tahmin <span>Ligi</span></h1>
+      <div class="whoami">${PLAYERS[state.user]} olarak giriş yaptın<button id="logoutBtn">çıkış</button></div>
+    </header>
+
+    ${renderLeague(list)}
+
+    ${isAdmin ? renderNewMatchForm() : ""}
+
+    <div class="section-title">Yaklaşan maçlar</div>
+    ${upcoming.length ? upcoming.map(m => renderTicket(m, isAdmin)).join("") : '<div class="empty">Yaklaşan maç yok.</div>'}
+
+    <div class="section-title">Geçmiş maçlar</div>
+    ${past.length ? past.map(m => renderTicket(m, isAdmin)).join("") : '<div class="empty">Henüz oynanan maç yok.</div>'}
+  `;
+}
+
+function renderLeague(list){
+  const totals = { anil: 0, semih: 0 };
+  list.forEach(m => {
+    if (m.published && m.points){
+      totals.anil += Number(m.points.anil || 0);
+      totals.semih += Number(m.points.semih || 0);
+    }
+  });
+  const ordered = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  return `
+    <div class="section-title">Puan ligi</div>
+    <div class="league">
+      ${ordered.map(([key, pts], i) => `
+        <div class="lrow">
+          <div class="lname ${i===0 && pts>0 ? 'leader':''}"><span class="rank">${i+1}</span>${PLAYERS[key]}</div>
+          <div class="lpts">${pts}</div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderNewMatchForm(){
+  return `
+    <div class="new-match">
+      <div class="grid">
+        <div><label>Ev sahibi</label><input id="homeTeam" placeholder="örn. Galatasaray"></div>
+        <div><label>Deplasman</label><input id="awayTeam" placeholder="örn. Fenerbahçe"></div>
+        <div class="full"><label>Maç saati</label><input id="kickoffInput" type="datetime-local"></div>
+      </div>
+      <button class="btn" id="createMatchBtn">Maçı oluştur</button>
+      <div class="save-status" id="newMatchStatus"></div>
+    </div>
+  `;
+}
+
+function renderTicket(m, isAdmin){
+  const now = Date.now();
+  const kickoffPassed = m.kickoffMs <= now;
+  const preds = m.predictions || {};
+  const myKey = state.user;
+  const otherKey = myKey === "anil" ? "semih" : "anil";
+  const kickoffLabel = new Date(m.kickoffMs).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" });
+
+  let predictionSection = "";
+  if (!kickoffPassed){
+    const myVal = preds[myKey];
+    if (myVal){
+      predictionSection = `
+        <div class="preds">
+          <div class="pred-box"><div class="name">${PLAYERS[myKey]} (sen)</div><div class="val">${myVal}</div></div>
+          <div class="pred-box locked"><div class="name">${PLAYERS[otherKey]}</div><div class="val">${preds[otherKey] ? '<span class="tick">✓ girildi</span>' : '<span class="dash">— henüz yok</span>'}</div></div>
+        </div>
+      `;
+    } else {
+      predictionSection = `
+        <div class="predict-row" data-match="${m.id}">
+          <input type="number" min="0" class="pred-home" placeholder="0">
+          <span class="dash-sep">-</span>
+          <input type="number" min="0" class="pred-away" placeholder="0">
+          <button class="save-btn" data-savepred="${m.id}">Kaydet</button>
+        </div>
+        <div class="save-status" id="predStatus-${m.id}"></div>
+        <div class="preds">
+          <div class="pred-box locked"><div class="name">${PLAYERS[otherKey]}</div><div class="val">${preds[otherKey] ? '<span class="tick">✓ girildi</span>' : '<span class="dash">— henüz yok</span>'}</div></div>
+        </div>
+      `;
+    }
+  } else {
+    predictionSection = `
+      <div class="preds">
+        <div class="pred-box"><div class="name">${PLAYERS.anil}</div><div class="val">${preds.anil || '—'}</div></div>
+        <div class="pred-box"><div class="name">${PLAYERS.semih}</div><div class="val">${preds.semih || '—'}</div></div>
+      </div>
+    `;
+  }
+
+  let resultSection = "";
+  if (m.published && m.result){
+    resultSection = `
+      <div class="result-line"><span class="score">${m.result.home} - ${m.result.away}</span><span class="tag">Yayınlandı</span></div>
+      <div class="points-row">
+        <div class="points-pill"><span class="name">${PLAYERS.anil}</span><span class="pts">${m.points.anil} puan</span></div>
+        <div class="points-pill"><span class="name">${PLAYERS.semih}</span><span class="pts">${m.points.semih} puan</span></div>
+      </div>
+    `;
+  } else if (isAdmin && kickoffPassed){
+    resultSection = `
+      <div class="admin-form" data-match="${m.id}">
+        <div class="label">Gerçek skor</div>
+        <div class="grid2"><input type="number" min="0" class="res-home" placeholder="Ev sahibi gol"><input type="number" min="0" class="res-away" placeholder="Deplasman gol"></div>
+        <div class="label">Puanlar (sen belirle)</div>
+        <div class="grid2"><input type="number" class="pts-anil" placeholder="Anıl puanı"><input type="number" class="pts-semih" placeholder="Semih puanı"></div>
+        <button class="publish-btn" data-publish="${m.id}">Yayınla</button>
+        <div class="save-status" id="pubStatus-${m.id}"></div>
+      </div>
+    `;
+  } else if (kickoffPassed){
+    resultSection = `<div class="pending">Sonuç henüz girilmedi.</div>`;
+  }
+
+  return `
+    <div class="ticket">
+      <div class="head">
+        <div class="teams">${m.home}<span class="vs">vs</span>${m.away}</div>
+        <div class="kickoff ${kickoffPassed ? '' : 'live'}">${kickoffLabel}</div>
+      </div>
+      <div class="divider"></div>
+      <div class="body">${predictionSection}${resultSection}</div>
+    </div>
+  `;
+}
+
+// ---------------- EVENTS ----------------
+function bindEvents(){
+  document.querySelectorAll("[data-pick]").forEach(btn=>{
+    btn.onclick = () => { state.loginPick = btn.dataset.pick; render(); };
+  });
+
+  const loginBtn = document.getElementById("loginBtn");
+  if (loginBtn){
+    loginBtn.onclick = () => {
+      const val = document.getElementById("keyInput").value;
+      const expected = state.loginPick === "anil" ? CONFIG.ANIL_KEY : CONFIG.SEMIH_KEY;
+      if (val === expected && val.length > 0){
+        state.user = state.loginPick;
+        localStorage.setItem("skor_user", state.user);
+        render();
+      } else {
+        document.getElementById("loginErr").textContent = "Şifre yanlış.";
+      }
+    };
+    document.getElementById("keyInput").addEventListener("keydown", e=>{ if (e.key === "Enter") loginBtn.click(); });
+  }
+
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn){
+    logoutBtn.onclick = () => { state.user = null; localStorage.removeItem("skor_user"); render(); };
+  }
+
+  const createBtn = document.getElementById("createMatchBtn");
+  if (createBtn){
+    createBtn.onclick = async () => {
+      const home = document.getElementById("homeTeam").value.trim();
+      const away = document.getElementById("awayTeam").value.trim();
+      const kickoffVal = document.getElementById("kickoffInput").value;
+      const status = document.getElementById("newMatchStatus");
+      if (!home || !away || !kickoffVal) return;
+      const kickoff = new Date(kickoffVal).toISOString();
+      const newId = String(Date.now());
+      state.matches.push({ id: newId, home, away, kickoff, predictions: {}, result: null, points: null, published: false });
+      createBtn.disabled = true;
+      status.textContent = "Kaydediliyor…"; status.className = "save-status";
+      try{ await saveData(); render(); }
+      catch(e){ status.textContent = "Kaydedilemedi, tekrar dene."; status.className = "save-status error"; createBtn.disabled = false; }
+    };
+  }
+
+  document.querySelectorAll("[data-savepred]").forEach(btn=>{
+    btn.onclick = async () => {
+      const matchId = btn.dataset.savepred;
+      const row = btn.closest(".predict-row");
+      const home = row.querySelector(".pred-home").value;
+      const away = row.querySelector(".pred-away").value;
+      const status = document.getElementById(`predStatus-${matchId}`);
+      if (home === "" || away === "") return;
+      const match = state.matches.find(m => m.id === matchId);
+      if (!match.predictions) match.predictions = {};
+      match.predictions[state.user] = `${home}-${away}`;
+      btn.disabled = true;
+      status.textContent = "Kaydediliyor…"; status.className = "save-status";
+      try{ await saveData(); render(); }
+      catch(e){
+        delete match.predictions[state.user];
+        status.textContent = "Kaydedilemedi, tekrar dene."; status.className = "save-status error";
+        btn.disabled = false;
+      }
+    };
+  });
+
+  document.querySelectorAll("[data-publish]").forEach(btn=>{
+    btn.onclick = async () => {
+      const matchId = btn.dataset.publish;
+      const form = btn.closest(".admin-form");
+      const resHome = form.querySelector(".res-home").value;
+      const resAway = form.querySelector(".res-away").value;
+      const ptsAnil = form.querySelector(".pts-anil").value;
+      const ptsSemih = form.querySelector(".pts-semih").value;
+      const status = document.getElementById(`pubStatus-${matchId}`);
+      if (resHome === "" || resAway === "" || ptsAnil === "" || ptsSemih === "") return;
+      const match = state.matches.find(m => m.id === matchId);
+      match.result = { home: Number(resHome), away: Number(resAway) };
+      match.points = { anil: Number(ptsAnil), semih: Number(ptsSemih) };
+      match.published = true;
+      btn.disabled = true;
+      status.textContent = "Yayınlanıyor…"; status.className = "save-status";
+      try{ await saveData(); render(); }
+      catch(e){
+        match.published = false;
+        status.textContent = "Kaydedilemedi, tekrar dene."; status.className = "save-status error";
+        btn.disabled = false;
+      }
+    };
+  });
+}
+
+loadData();
+setInterval(loadData, 20000); // 20 saniyede bir karşı tarafın girişini otomatik çek
+</script>
+</body>
+</html>
