@@ -5,16 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Skor Tahmin Ligi</title>
 
-<!-- Kurulum için README.md'ye bak. Buraya kendi gist ID, token ve
-     şifrelerini yapıştır. -->
+<!-- Kurulum için README.md'ye bak. -->
 <script>
   const CONFIG = {
-    GIST_ID: "565a9a287515ea5008d7526953a34a3d",
-    GITHUB_TOKEN: "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",
+    firebase: {
+      apiKey: "AIzaSyDNypWgftHcs6w7vHPH3OOs8K4KFd3hrbI",
+      authDomain: "skor-ligi.firebaseapp.com",
+      databaseURL: "https://skor-ligi-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "skor-ligi",
+      storageBucket: "skor-ligi.firebasestorage.app",
+      messagingSenderId: "445585546071",
+      appId: "1:445585546071:web:896a32b519494770a13c12"
+    },
     ANIL_KEY: "1992Anil",
     SEMIH_KEY: "1990Semih"
   };
 </script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -125,7 +133,9 @@
 
 <script>
 const PLAYERS = { anil: "Anıl", semih: "Semih" };
-const GIST_API = `https://api.github.com/gists/${CONFIG.GIST_ID}`;
+firebase.initializeApp(CONFIG.firebase);
+const db = firebase.database();
+const matchesRef = db.ref("matches");
 
 let state = {
   user: localStorage.getItem("skor_user") || null,
@@ -133,32 +143,9 @@ let state = {
   matches: [],
 };
 
-// ---------------- GIST OKUMA / YAZMA ----------------
-async function loadData(){
-  const res = await fetch(GIST_API);
-  const gist = await res.json();
-  const content = gist.files["data.json"].content;
-  state.matches = JSON.parse(content);
-  render();
-}
-
+// ---------------- FIREBASE OKUMA / YAZMA ----------------
 async function saveData(){
-  const res = await fetch(GIST_API, {
-    method: "PATCH",
-    headers: {
-      "Authorization": `token ${CONFIG.GITHUB_TOKEN}`,
-      "Accept": "application/vnd.github+json",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      files: { "data.json": { content: JSON.stringify(state.matches, null, 2) } }
-    })
-  });
-  if (!res.ok){
-    let detail = "";
-    try{ const errJson = await res.json(); detail = errJson.message || ""; }catch(_){}
-    throw new Error(`HTTP ${res.status}${detail ? " - " + detail : ""}`);
-  }
+  await matchesRef.set(state.matches);
 }
 
 // ---------------- RENDER ----------------
@@ -460,8 +447,10 @@ function bindEvents(){
   });
 }
 
-loadData();
-setInterval(loadData, 20000); // 20 saniyede bir karşı tarafın girişini otomatik çek
+matchesRef.on("value", snap => {
+  state.matches = snap.val() || [];
+  render();
+});
 </script>
 </body>
 </html>
