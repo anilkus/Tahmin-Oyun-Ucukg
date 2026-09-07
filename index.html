@@ -82,7 +82,13 @@
   .league .lpts{ font-family:'Oswald',sans-serif; font-size:22px; }
 
   .ticket{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); margin-bottom:14px; overflow:hidden; }
-  .ticket .head{ display:flex; justify-content:space-between; align-items:center; padding:14px 16px 10px; }
+  .ticket .head{ display:flex; justify-content:space-between; align-items:center; padding:14px 16px 10px; gap:10px; }
+  .head-left{ display:flex; flex-direction:column; }
+  .delete-btn{
+    background:none; border:1px solid var(--card-border); color:var(--danger);
+    border-radius:6px; padding:4px 9px; font-size:11px; cursor:pointer; white-space:nowrap;
+  }
+  .delete-btn:hover{ border-color:var(--danger); }
   .teams{ font-size:17px; font-weight:600; font-family:'Oswald',sans-serif; }
   .teams .vs{ color:var(--muted); font-size:13px; margin:0 6px; font-family:'Inter',sans-serif; }
   .kickoff{ font-size:12px; color:var(--muted); }
@@ -115,6 +121,7 @@
   .points-pill{ flex:1; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; }
   .points-pill .name{ font-size:13px; color:var(--chalk-dim); }
   .points-pill .pts{ font-family:'Oswald',sans-serif; font-size:18px; color:var(--amber); }
+  .reason-box{ margin-top:8px; font-size:12px; color:var(--muted); line-height:1.5; }
 
   .admin-form{ margin-top:12px; padding-top:12px; border-top:1px dashed var(--card-border); }
   .admin-form .label{ font-size:12px; color:var(--muted); margin-bottom:6px; }
@@ -122,8 +129,34 @@
   .admin-form input{ width:100%; padding:8px 10px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
   .admin-form .publish-btn{ width:100%; padding:11px 0; background:var(--turf); border:none; border-radius:8px; color:#06210f; font-weight:600; cursor:pointer; }
   .admin-form .publish-btn:disabled{ opacity:.6; cursor:default; }
+  .admin-form .fetch-btn{ width:100%; padding:9px 0; background:none; border:1px solid var(--amber); border-radius:8px; color:var(--amber); font-size:13px; cursor:pointer; margin-bottom:6px; }
+  .admin-form .fetch-btn:disabled{ opacity:.6; cursor:default; }
 
   .empty{ color:var(--muted); font-size:14px; padding:20px 0; text-align:center; }
+
+  .notify-banner{
+    background:linear-gradient(135deg, #22321f, #1a2419); border:1px solid var(--amber);
+    border-radius:var(--radius); padding:14px 16px; margin-bottom:16px;
+  }
+  .notify-banner .title{ font-family:'Oswald',sans-serif; font-size:15px; color:var(--amber); margin-bottom:8px; }
+  .notify-banner .line{ font-size:13px; color:var(--chalk-dim); margin-bottom:4px; }
+  .notify-banner button{
+    margin-top:8px; padding:7px 14px; background:var(--amber); border:none; border-radius:8px;
+    color:#1a1204; font-weight:600; font-size:12px; cursor:pointer;
+  }
+
+  .section-inner-title{ font-size:13px; color:var(--amber); margin-bottom:10px; font-family:'Oswald',sans-serif; }
+  .suggestion-item{
+    background:var(--card); border:1px solid var(--amber); border-radius:var(--radius);
+    padding:14px 16px; margin-bottom:10px;
+  }
+  .suggestion-item .kickoff{ margin:4px 0 10px; }
+  .suggestion-actions{ display:flex; gap:8px; }
+  .suggestion-actions button{
+    flex:1; padding:8px 0; border-radius:8px; font-size:13px; cursor:pointer; border:none; font-weight:600;
+  }
+  .approve-btn{ background:var(--turf); color:#06210f; }
+  .reject-btn{ background:none; border:1px solid var(--card-border) !important; color:var(--chalk-dim); }
 </style>
 </head>
 <body>
@@ -136,16 +169,77 @@ const PLAYERS = { anil: "Anıl", semih: "Semih" };
 firebase.initializeApp(CONFIG.firebase);
 const db = firebase.database();
 const matchesRef = db.ref("matches");
+const keysRef = db.ref("keys");
+const suggestionsRef = db.ref("suggestions");
 
 let state = {
   user: localStorage.getItem("skor_user") || null,
   loginPick: "anil",
   matches: [],
+  suggestions: [],
+  keys: { anil: CONFIG.ANIL_KEY, semih: CONFIG.SEMIH_KEY },
+  showPasswordForm: false,
+  passwordMsg: "",
 };
 
 // ---------------- FIREBASE OKUMA / YAZMA ----------------
 async function saveData(){
   await matchesRef.set(state.matches);
+}
+
+async function saveKey(user, newKey){
+  await keysRef.child(user).set(newKey);
+}
+
+async function saveSuggestions(){
+  await suggestionsRef.set(state.suggestions);
+}
+
+// ---------------- PUAN HESAPLAMA ----------------
+// Kesin skor: 5. Diğer durumlarda: taban puan (gol farkı doğru: 3, sadece sonuç doğru: 2, ikisi de yanlış: 0)
+// + yakınlık bonusu (ev sahibi skoru gerçeğe en fazla 1 fark yakınsa +1, deplasman için de aynı, toplam en fazla +2).
+function calcPoints(predStr, resHome, resAway){
+  if (!predStr) return { points: 0, reason: "tahmin girilmedi" };
+  const parts = predStr.split("-").map(Number);
+  if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) return { points: 0, reason: "geçersiz tahmin" };
+  const [ph, pa] = parts;
+
+  if (ph === resHome && pa === resAway){
+    return { points: 5, reason: "skor birebir tuttu" };
+  }
+
+  const predDiff = ph - pa;
+  const realDiff = resHome - resAway;
+  const sign = n => n > 0 ? 1 : (n < 0 ? -1 : 0);
+  const diffMatch = predDiff === realDiff;
+  const outcomeMatch = sign(predDiff) === sign(realDiff);
+  const base = diffMatch ? 3 : (outcomeMatch ? 2 : 0);
+
+  const homeDiff = Math.abs(ph - resHome);
+  const awayDiff = Math.abs(pa - resAway);
+  const proxBonus = (homeDiff <= 1 ? 1 : 0) + (awayDiff <= 1 ? 1 : 0);
+
+  const points = base + proxBonus;
+  const baseLabel = diffMatch ? "gol farkı tuttu" : (outcomeMatch ? "sonuç tuttu" : "sonuç tutmadı");
+  const reason = proxBonus > 0 ? `${baseLabel}, yakınlık +${proxBonus} (${base}+${proxBonus})` : `${baseLabel} (+${base})`;
+  return { points, reason };
+}
+
+// ---------------- İNTERNETTEN SKOR ÇEKME (TheSportsDB, ücretsiz test key) ----------------
+async function fetchRealScore(home, away, kickoffIso){
+  const eventName = `${home}_vs_${away}`.replace(/\s+/g, "_");
+  const url = `https://www.thesportsdb.com/api/v1/json/3/searchevents.php?e=${encodeURIComponent(eventName)}`;
+  try{
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data || !data.event || !data.event.length) return null;
+    const targetDate = kickoffIso.slice(0,10);
+    const match = data.event.find(e => e.dateEvent === targetDate) || data.event[0];
+    if (!match || match.intHomeScore === null || match.intHomeScore === undefined || match.intAwayScore === null) return null;
+    return { home: Number(match.intHomeScore), away: Number(match.intAwayScore) };
+  }catch(e){
+    return null;
+  }
 }
 
 // ---------------- RENDER ----------------
@@ -177,21 +271,56 @@ function renderApp(){
   const upcoming = list.filter(m => m.kickoffMs > now).sort((a,b)=>a.kickoffMs-b.kickoffMs);
   const past = list.filter(m => m.kickoffMs <= now).sort((a,b)=>b.kickoffMs-a.kickoffMs);
 
+  const seenKey = `skor_seen_${state.user}`;
+  const seenIds = JSON.parse(localStorage.getItem(seenKey) || "[]");
+  const newlyPublished = list.filter(m => m.published && !seenIds.includes(m.id));
+
   return `
     <header class="top">
       <h1>Skor Tahmin <span>Ligi</span></h1>
-      <div class="whoami">${PLAYERS[state.user]} olarak giriş yaptın<button id="logoutBtn">çıkış</button></div>
+      <div class="whoami">${PLAYERS[state.user]} olarak giriş yaptın<button id="pwToggleBtn">şifre değiştir</button><button id="logoutBtn">çıkış</button></div>
     </header>
+
+    ${newlyPublished.length ? renderNotifyBanner(newlyPublished) : ""}
+
+    ${state.showPasswordForm ? renderPasswordForm() : ""}
 
     ${renderLeague(list)}
 
-    ${isAdmin ? renderNewMatchForm() : ""}
+    ${isAdmin && state.suggestions.length ? renderSuggestionsList() : ""}
+
+    ${isAdmin ? renderNewMatchForm() : renderSuggestForm()}
 
     <div class="section-title">Yaklaşan maçlar</div>
     ${upcoming.length ? upcoming.map(m => renderTicket(m, isAdmin)).join("") : '<div class="empty">Yaklaşan maç yok.</div>'}
 
     <div class="section-title">Geçmiş maçlar</div>
     ${past.length ? past.map(m => renderTicket(m, isAdmin)).join("") : '<div class="empty">Henüz oynanan maç yok.</div>'}
+  `;
+}
+
+function renderNotifyBanner(matches){
+  const ids = matches.map(m => m.id).join(",");
+  return `
+    <div class="notify-banner">
+      <div class="title">Yeni sonuç yayınlandı 🔔</div>
+      ${matches.map(m => `<div class="line">${m.home} ${m.result.home} - ${m.result.away} ${m.away} · sen ${m.points[state.user]} puan aldın</div>`).join("")}
+      <button data-dismiss="${ids}">Gördüm</button>
+    </div>
+  `;
+}
+
+function renderPasswordForm(){
+  return `
+    <div class="new-match" id="passwordForm">
+      <div class="grid">
+        <div class="full"><label>Mevcut şifre</label><input type="password" id="pwCurrent" autocomplete="off"></div>
+        <div><label>Yeni şifre</label><input type="password" id="pwNew" autocomplete="off"></div>
+        <div><label>Yeni şifre (tekrar)</label><input type="password" id="pwNew2" autocomplete="off"></div>
+      </div>
+      <button class="btn" id="pwSubmitBtn">Şifreyi güncelle</button>
+      <div class="save-status ${state.passwordMsg.startsWith('Hata') ? 'error' : ''}">${state.passwordMsg}</div>
+    </div>
   `;
 }
 
@@ -219,24 +348,23 @@ function renderLeague(list){
 
 const AYLAR = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
 
-function renderNewMatchForm(){
+function dateTimeOptions(){
   const now = new Date();
   const curYear = now.getFullYear();
   const curDay = now.getDate();
-  const curMonth = now.getMonth(); // 0-11
+  const curMonth = now.getMonth();
   const curHour = now.getHours();
+  return {
+    dayOpts: Array.from({length:31}, (_,i)=>i+1).map(d => `<option value="${d}" ${d===curDay?'selected':''}>${d}</option>`).join(""),
+    monthOpts: AYLAR.map((m,i) => `<option value="${i}" ${i===curMonth?'selected':''}>${m}</option>`).join(""),
+    yearOpts: [curYear, curYear+1].map(y => `<option value="${y}">${y}</option>`).join(""),
+    hourOpts: Array.from({length:24}, (_,i)=>i).map(h => `<option value="${h}" ${h===curHour?'selected':''}>${String(h).padStart(2,'0')}</option>`).join(""),
+    minuteOpts: Array.from({length:60}, (_,i)=>i).map(mi => `<option value="${mi}">${String(mi).padStart(2,'0')}</option>`).join("")
+  };
+}
 
-  const dayOpts = Array.from({length:31}, (_,i)=>i+1)
-    .map(d => `<option value="${d}" ${d===curDay?'selected':''}>${d}</option>`).join("");
-  const monthOpts = AYLAR
-    .map((m,i) => `<option value="${i}" ${i===curMonth?'selected':''}>${m}</option>`).join("");
-  const yearOpts = [curYear, curYear+1]
-    .map(y => `<option value="${y}">${y}</option>`).join("");
-  const hourOpts = Array.from({length:24}, (_,i)=>i)
-    .map(h => `<option value="${h}" ${h===curHour?'selected':''}>${String(h).padStart(2,'0')}</option>`).join("");
-  const minuteOpts = Array.from({length:60}, (_,i)=>i)
-    .map(mi => `<option value="${mi}">${String(mi).padStart(2,'0')}</option>`).join("");
-
+function renderNewMatchForm(){
+  const o = dateTimeOptions();
   return `
     <div class="new-match">
       <div class="grid">
@@ -245,18 +373,60 @@ function renderNewMatchForm(){
       </div>
       <label>Maç tarihi</label>
       <div class="date-grid">
-        <select id="dayInput">${dayOpts}</select>
-        <select id="monthInput">${monthOpts}</select>
-        <select id="yearInput">${yearOpts}</select>
+        <select id="dayInput">${o.dayOpts}</select>
+        <select id="monthInput">${o.monthOpts}</select>
+        <select id="yearInput">${o.yearOpts}</select>
       </div>
       <label>Maç saati (senin tarayıcı saatine göre)</label>
       <div class="time-grid">
-        <select id="hourInput">${hourOpts}</select>
-        <select id="minuteInput">${minuteOpts}</select>
+        <select id="hourInput">${o.hourOpts}</select>
+        <select id="minuteInput">${o.minuteOpts}</select>
       </div>
       <button class="btn" id="createMatchBtn">Maçı oluştur</button>
       <div class="save-status" id="newMatchStatus"></div>
     </div>
+  `;
+}
+
+function renderSuggestForm(){
+  const o = dateTimeOptions();
+  return `
+    <div class="new-match">
+      <div class="section-inner-title">Maç öner</div>
+      <div class="grid">
+        <div><label>Ev sahibi</label><input id="sHomeTeam" placeholder="örn. Galatasaray"></div>
+        <div><label>Deplasman</label><input id="sAwayTeam" placeholder="örn. Fenerbahçe"></div>
+      </div>
+      <label>Maç tarihi</label>
+      <div class="date-grid">
+        <select id="sDayInput">${o.dayOpts}</select>
+        <select id="sMonthInput">${o.monthOpts}</select>
+        <select id="sYearInput">${o.yearOpts}</select>
+      </div>
+      <label>Maç saati (senin tarayıcı saatine göre)</label>
+      <div class="time-grid">
+        <select id="sHourInput">${o.hourOpts}</select>
+        <select id="sMinuteInput">${o.minuteOpts}</select>
+      </div>
+      <button class="btn" id="sendSuggestionBtn">Anıl'a öner</button>
+      <div class="save-status" id="suggestStatus"></div>
+    </div>
+  `;
+}
+
+function renderSuggestionsList(){
+  return `
+    <div class="section-title">Semih'in maç önerileri</div>
+    ${state.suggestions.map(s => `
+      <div class="suggestion-item" data-suggid="${s.id}">
+        <div class="teams">${s.home}<span class="vs">vs</span>${s.away}</div>
+        <div class="kickoff">${new Date(s.kickoff).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}</div>
+        <div class="suggestion-actions">
+          <button class="approve-btn" data-approve="${s.id}">Onayla</button>
+          <button class="reject-btn" data-reject="${s.id}">Reddet</button>
+        </div>
+      </div>
+    `).join("")}
   `;
 }
 
@@ -303,19 +473,28 @@ function renderTicket(m, isAdmin){
 
   let resultSection = "";
   if (m.published && m.result){
+    const reason = m.pointsReason || {};
     resultSection = `
       <div class="result-line"><span class="score">${m.result.home} - ${m.result.away}</span><span class="tag">Yayınlandı</span></div>
       <div class="points-row">
         <div class="points-pill"><span class="name">${PLAYERS.anil}</span><span class="pts">${m.points.anil} puan</span></div>
         <div class="points-pill"><span class="name">${PLAYERS.semih}</span><span class="pts">${m.points.semih} puan</span></div>
       </div>
+      ${(reason.anil || reason.semih) ? `
+        <div class="reason-box">
+          ${reason.anil ? `<div>${PLAYERS.anil}: ${reason.anil}</div>` : ""}
+          ${reason.semih ? `<div>${PLAYERS.semih}: ${reason.semih}</div>` : ""}
+        </div>
+      ` : ""}
     `;
   } else if (isAdmin && kickoffPassed){
     resultSection = `
-      <div class="admin-form" data-match="${m.id}">
+      <div class="admin-form" data-match="${m.id}" data-home="${m.home}" data-away="${m.away}" data-kickoff="${m.kickoff}" data-pred-anil="${preds.anil || ''}" data-pred-semih="${preds.semih || ''}">
         <div class="label">Gerçek skor</div>
         <div class="grid2"><input type="number" min="0" class="res-home" placeholder="Ev sahibi gol"><input type="number" min="0" class="res-away" placeholder="Deplasman gol"></div>
-        <div class="label">Puanlar (sen belirle)</div>
+        <button type="button" class="fetch-btn" data-fetchscore="${m.id}">Skoru internetten getir</button>
+        <div class="save-status" id="fetchStatus-${m.id}"></div>
+        <div class="label" style="margin-top:10px;">Puanlar (otomatik önerilir, değiştirebilirsin)</div>
         <div class="grid2"><input type="number" class="pts-anil" placeholder="Anıl puanı"><input type="number" class="pts-semih" placeholder="Semih puanı"></div>
         <button class="publish-btn" data-publish="${m.id}">Yayınla</button>
         <div class="save-status" id="pubStatus-${m.id}"></div>
@@ -328,13 +507,30 @@ function renderTicket(m, isAdmin){
   return `
     <div class="ticket">
       <div class="head">
-        <div class="teams">${m.home}<span class="vs">vs</span>${m.away}</div>
-        <div class="kickoff ${kickoffPassed ? '' : 'live'}">${kickoffLabel}</div>
+        <div class="head-left">
+          <div class="teams">${m.home}<span class="vs">vs</span>${m.away}</div>
+          <div class="kickoff ${kickoffPassed ? '' : 'live'}">${kickoffLabel}</div>
+        </div>
+        ${isAdmin ? `<button class="delete-btn" data-delete="${m.id}">Maçı sil</button>` : ""}
       </div>
       <div class="divider"></div>
       <div class="body">${predictionSection}${resultSection}</div>
     </div>
   `;
+}
+
+function applyAutoPoints(form){
+  const resHome = form.querySelector(".res-home").value;
+  const resAway = form.querySelector(".res-away").value;
+  if (resHome === "" || resAway === "") return;
+  const predAnil = form.dataset.predAnil;
+  const predSemih = form.dataset.predSemih;
+  const anilResult = calcPoints(predAnil, Number(resHome), Number(resAway));
+  const semihResult = calcPoints(predSemih, Number(resHome), Number(resAway));
+  form.querySelector(".pts-anil").value = anilResult.points;
+  form.querySelector(".pts-semih").value = semihResult.points;
+  form.dataset.reasonAnil = anilResult.reason;
+  form.dataset.reasonSemih = semihResult.reason;
 }
 
 // ---------------- EVENTS ----------------
@@ -347,7 +543,7 @@ function bindEvents(){
   if (loginBtn){
     loginBtn.onclick = () => {
       const val = document.getElementById("keyInput").value;
-      const expected = state.loginPick === "anil" ? CONFIG.ANIL_KEY : CONFIG.SEMIH_KEY;
+      const expected = state.loginPick === "anil" ? state.keys.anil : state.keys.semih;
       if (val === expected && val.length > 0){
         state.user = state.loginPick;
         localStorage.setItem("skor_user", state.user);
@@ -362,6 +558,54 @@ function bindEvents(){
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn){
     logoutBtn.onclick = () => { state.user = null; localStorage.removeItem("skor_user"); render(); };
+  }
+
+  const dismissBtn = document.querySelector("[data-dismiss]");
+  if (dismissBtn){
+    dismissBtn.onclick = () => {
+      const ids = dismissBtn.dataset.dismiss.split(",");
+      const seenKey = `skor_seen_${state.user}`;
+      const seenIds = JSON.parse(localStorage.getItem(seenKey) || "[]");
+      localStorage.setItem(seenKey, JSON.stringify([...new Set([...seenIds, ...ids])]));
+      render();
+    };
+  }
+
+  const pwToggleBtn = document.getElementById("pwToggleBtn");
+  if (pwToggleBtn){
+    pwToggleBtn.onclick = () => {
+      state.showPasswordForm = !state.showPasswordForm;
+      state.passwordMsg = "";
+      render();
+    };
+  }
+
+  const pwSubmitBtn = document.getElementById("pwSubmitBtn");
+  if (pwSubmitBtn){
+    pwSubmitBtn.onclick = async () => {
+      const current = document.getElementById("pwCurrent").value;
+      const next = document.getElementById("pwNew").value;
+      const next2 = document.getElementById("pwNew2").value;
+      if (current !== state.keys[state.user]){
+        state.passwordMsg = "Hata: mevcut şifre yanlış."; render(); return;
+      }
+      if (!next || next.length < 4){
+        state.passwordMsg = "Hata: yeni şifre en az 4 karakter olmalı."; render(); return;
+      }
+      if (next !== next2){
+        state.passwordMsg = "Hata: yeni şifreler eşleşmiyor."; render(); return;
+      }
+      pwSubmitBtn.disabled = true;
+      state.passwordMsg = "Güncelleniyor…"; render();
+      try{
+        await saveKey(state.user, next);
+        state.showPasswordForm = false;
+        state.passwordMsg = "";
+        render();
+      }catch(e){
+        state.passwordMsg = "Hata: kaydedilemedi - " + e.message; render();
+      }
+    };
   }
 
   const createBtn = document.getElementById("createMatchBtn");
@@ -399,6 +643,82 @@ function bindEvents(){
     };
   }
 
+  const sendSuggestionBtn = document.getElementById("sendSuggestionBtn");
+  if (sendSuggestionBtn){
+    sendSuggestionBtn.onclick = async () => {
+      const home = document.getElementById("sHomeTeam").value.trim();
+      const away = document.getElementById("sAwayTeam").value.trim();
+      const status = document.getElementById("suggestStatus");
+      if (!home || !away){
+        status.textContent = "Takım isimlerini gir."; status.className = "save-status error";
+        return;
+      }
+      const day = Number(document.getElementById("sDayInput").value);
+      const month = Number(document.getElementById("sMonthInput").value);
+      const year = Number(document.getElementById("sYearInput").value);
+      const hour = Number(document.getElementById("sHourInput").value);
+      const minute = Number(document.getElementById("sMinuteInput").value);
+      const kickoffDate = new Date(year, month, day, hour, minute, 0);
+      if (isNaN(kickoffDate.getTime())){
+        status.textContent = "Geçersiz tarih."; status.className = "save-status error";
+        return;
+      }
+      const kickoff = kickoffDate.toISOString();
+      const newId = String(Date.now());
+      state.suggestions.push({ id: newId, home, away, kickoff, suggestedBy: state.user });
+      sendSuggestionBtn.disabled = true;
+      status.textContent = "Gönderiliyor…"; status.className = "save-status";
+      try{
+        await saveSuggestions();
+        status.textContent = "Anıl'a gönderildi, onayını bekliyor.";
+        sendSuggestionBtn.disabled = false;
+      }catch(e){
+        state.suggestions.pop();
+        status.textContent = "Gönderilemedi: " + e.message; status.className = "save-status error";
+        sendSuggestionBtn.disabled = false;
+      }
+    };
+  }
+
+  document.querySelectorAll("[data-approve]").forEach(btn=>{
+    btn.onclick = async () => {
+      const suggId = btn.dataset.approve;
+      const sugg = state.suggestions.find(s => s.id === suggId);
+      if (!sugg) return;
+      btn.disabled = true;
+      const newMatch = { id: String(Date.now()), home: sugg.home, away: sugg.away, kickoff: sugg.kickoff, predictions: {}, result: null, points: null, published: false };
+      const matchesBackup = state.matches;
+      const suggBackup = state.suggestions;
+      state.matches = [...state.matches, newMatch];
+      state.suggestions = state.suggestions.filter(s => s.id !== suggId);
+      try{
+        await saveData();
+        await saveSuggestions();
+        render();
+      }catch(e){
+        state.matches = matchesBackup;
+        state.suggestions = suggBackup;
+        alert("Onaylanamadı: " + e.message);
+        render();
+      }
+    };
+  });
+
+  document.querySelectorAll("[data-reject]").forEach(btn=>{
+    btn.onclick = async () => {
+      const suggId = btn.dataset.reject;
+      const backup = state.suggestions;
+      state.suggestions = state.suggestions.filter(s => s.id !== suggId);
+      btn.disabled = true;
+      try{ await saveSuggestions(); render(); }
+      catch(e){
+        state.suggestions = backup;
+        alert("Reddedilemedi: " + e.message);
+        render();
+      }
+    };
+  });
+
   document.querySelectorAll("[data-savepred]").forEach(btn=>{
     btn.onclick = async () => {
       const matchId = btn.dataset.savepred;
@@ -421,6 +741,30 @@ function bindEvents(){
     };
   });
 
+  document.querySelectorAll("[data-fetchscore]").forEach(btn=>{
+    btn.onclick = async () => {
+      const matchId = btn.dataset.fetchscore;
+      const form = btn.closest(".admin-form");
+      const status = document.getElementById(`fetchStatus-${matchId}`);
+      btn.disabled = true;
+      status.textContent = "Aranıyor…"; status.className = "save-status";
+      const found = await fetchRealScore(form.dataset.home, form.dataset.away, form.dataset.kickoff);
+      btn.disabled = false;
+      if (found){
+        form.querySelector(".res-home").value = found.home;
+        form.querySelector(".res-away").value = found.away;
+        status.textContent = "Bulundu, kontrol edip yayınlayabilirsin."; status.className = "save-status";
+        applyAutoPoints(form);
+      } else {
+        status.textContent = "Bulunamadı, skoru elle gir."; status.className = "save-status error";
+      }
+    };
+  });
+
+  document.querySelectorAll(".admin-form .res-home, .admin-form .res-away").forEach(input=>{
+    input.addEventListener("input", () => applyAutoPoints(input.closest(".admin-form")));
+  });
+
   document.querySelectorAll("[data-publish]").forEach(btn=>{
     btn.onclick = async () => {
       const matchId = btn.dataset.publish;
@@ -434,6 +778,10 @@ function bindEvents(){
       const match = state.matches.find(m => m.id === matchId);
       match.result = { home: Number(resHome), away: Number(resAway) };
       match.points = { anil: Number(ptsAnil), semih: Number(ptsSemih) };
+      match.pointsReason = {
+        anil: form.dataset.reasonAnil || "",
+        semih: form.dataset.reasonSemih || ""
+      };
       match.published = true;
       btn.disabled = true;
       status.textContent = "Yayınlanıyor…"; status.className = "save-status";
@@ -445,10 +793,42 @@ function bindEvents(){
       }
     };
   });
+
+  document.querySelectorAll("[data-delete]").forEach(btn=>{
+    btn.onclick = async () => {
+      const matchId = btn.dataset.delete;
+      const match = state.matches.find(m => m.id === matchId);
+      if (!confirm(`${match.home} - ${match.away} maçını silmek istediğine emin misin?`)) return;
+      const backup = state.matches;
+      state.matches = state.matches.filter(m => m.id !== matchId);
+      btn.disabled = true;
+      try{ await saveData(); render(); }
+      catch(e){
+        state.matches = backup;
+        alert("Silinemedi: " + e.message);
+        render();
+      }
+    };
+  });
 }
+
+keysRef.on("value", snap => {
+  const val = snap.val();
+  if (val && val.anil && val.semih){
+    state.keys = val;
+  } else {
+    keysRef.set({ anil: CONFIG.ANIL_KEY, semih: CONFIG.SEMIH_KEY });
+  }
+  render();
+});
 
 matchesRef.on("value", snap => {
   state.matches = snap.val() || [];
+  render();
+});
+
+suggestionsRef.on("value", snap => {
+  state.suggestions = snap.val() || [];
   render();
 });
 </script>
