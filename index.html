@@ -580,7 +580,7 @@ function renderTicket(m, isAdmin){
   `;
 }
 
-function applyAutoPoints(form){
+function applyAutoPoints(form, force = false){
   const resHome = form.querySelector(".res-home").value;
   const resAway = form.querySelector(".res-away").value;
   if (resHome === "" || resAway === "") return;
@@ -588,8 +588,12 @@ function applyAutoPoints(form){
   const predSemih = form.dataset.predSemih;
   const anilResult = calcPoints(predAnil, Number(resHome), Number(resAway));
   const semihResult = calcPoints(predSemih, Number(resHome), Number(resAway));
-  form.querySelector(".pts-anil").value = anilResult.points;
-  form.querySelector(".pts-semih").value = semihResult.points;
+  const ptsAnilInput = form.querySelector(".pts-anil");
+  const ptsSemihInput = form.querySelector(".pts-semih");
+  // elle girilmiş bir puanı sessizce ezmemek için: sadece boşsa ya da "Skoru getir" ile
+  // zorlanmışsa dolduruyoruz.
+  if (force || ptsAnilInput.value === "") ptsAnilInput.value = anilResult.points;
+  if (force || ptsSemihInput.value === "") ptsSemihInput.value = semihResult.points;
   form.dataset.reasonAnil = anilResult.reason;
   form.dataset.reasonSemih = semihResult.reason;
 }
@@ -839,7 +843,7 @@ function bindEvents(){
         form.querySelector(".res-home").value = found.home;
         form.querySelector(".res-away").value = found.away;
         status.textContent = "Bulundu, kontrol edip yayınlayabilirsin."; status.className = "save-status";
-        applyAutoPoints(form);
+        applyAutoPoints(form, true);
       } else {
         status.textContent = "Bulunamadı, skoru elle gir."; status.className = "save-status error";
       }
@@ -859,7 +863,14 @@ function bindEvents(){
       const ptsAnil = form.querySelector(".pts-anil").value;
       const ptsSemih = form.querySelector(".pts-semih").value;
       const status = document.getElementById(`pubStatus-${matchId}`);
-      if (resHome === "" || resAway === "" || ptsAnil === "" || ptsSemih === "") return;
+      if (resHome === "" || resAway === ""){
+        status.textContent = "Gerçek skoru gir."; status.className = "save-status error";
+        return;
+      }
+      if (ptsAnil === "" || ptsSemih === ""){
+        status.textContent = "Puan kutuları boş görünüyor, kontrol et."; status.className = "save-status error";
+        return;
+      }
       const match = state.matches.find(m => m.id === matchId);
       match.result = { home: Number(resHome), away: Number(resAway) };
       match.points = { anil: Number(ptsAnil), semih: Number(ptsSemih) };
