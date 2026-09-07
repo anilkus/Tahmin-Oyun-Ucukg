@@ -147,13 +147,18 @@ async function saveData(){
     method: "PATCH",
     headers: {
       "Authorization": `token ${CONFIG.GITHUB_TOKEN}`,
-      "Accept": "application/vnd.github+json"
+      "Accept": "application/vnd.github+json",
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({
       files: { "data.json": { content: JSON.stringify(state.matches, null, 2) } }
     })
   });
-  if (!res.ok) throw new Error("save failed");
+  if (!res.ok){
+    let detail = "";
+    try{ const errJson = await res.json(); detail = errJson.message || ""; }catch(_){}
+    throw new Error(`HTTP ${res.status}${detail ? " - " + detail : ""}`);
+  }
 }
 
 // ---------------- RENDER ----------------
@@ -402,7 +407,7 @@ function bindEvents(){
       try{ await saveData(); render(); }
       catch(e){
         state.matches.pop();
-        status.textContent = "Kaydedilemedi, tekrar dene."; status.className = "save-status error"; createBtn.disabled = false;
+        status.textContent = "Kaydedilemedi: " + e.message; status.className = "save-status error"; createBtn.disabled = false;
       }
     };
   }
@@ -423,7 +428,7 @@ function bindEvents(){
       try{ await saveData(); render(); }
       catch(e){
         delete match.predictions[state.user];
-        status.textContent = "Kaydedilemedi, tekrar dene."; status.className = "save-status error";
+        status.textContent = "Kaydedilemedi: " + e.message; status.className = "save-status error";
         btn.disabled = false;
       }
     };
@@ -448,7 +453,7 @@ function bindEvents(){
       try{ await saveData(); render(); }
       catch(e){
         match.published = false;
-        status.textContent = "Kaydedilemedi, tekrar dene."; status.className = "save-status error";
+        status.textContent = "Kaydedilemedi: " + e.message; status.className = "save-status error";
         btn.disabled = false;
       }
     };
