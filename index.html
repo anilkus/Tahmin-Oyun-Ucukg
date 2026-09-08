@@ -171,6 +171,16 @@
   .comment-form{ display:flex; gap:8px; margin-top:10px; }
   .comment-form input{ flex:1; padding:9px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
   .comment-form button{ padding:9px 16px; background:var(--amber); border:none; border-radius:8px; color:#1a1204; font-weight:600; font-size:13px; cursor:pointer; }
+
+  .info-section{ margin-top:36px; }
+  .info-box{
+    background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius);
+    padding:18px 18px 20px;
+  }
+  .info-box .rule{ display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--card-border); font-size:13px; color:var(--chalk-dim); }
+  .info-box .rule:last-of-type{ border-bottom:none; }
+  .info-box .rule .rpts{ font-family:'Oswald',sans-serif; color:var(--amber); font-size:15px; }
+  .info-box .note{ font-size:12px; color:var(--muted); margin-top:12px; line-height:1.6; }
 </style>
 </head>
 <body>
@@ -217,6 +227,21 @@ async function saveComments(){
 
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+// ---------------- KÜFÜR FİLTRESİ ----------------
+const PROFANITY_LIST = [
+  "amk","amına","amcık","aq","orospu","piç","yavşak","yarrak","ibne",
+  "siktir","sikeyim","sik","göt","puşt","şerefsiz","pezevenk","kahpe",
+  "gavat","dallama","dangalak","yarrağ","oç","şıllık"
+];
+function filterProfanity(text){
+  let result = text;
+  PROFANITY_LIST.forEach(word => {
+    const re = new RegExp(word, "gi");
+    result = result.replace(re, "****");
+  });
+  return result;
 }
 
 // ---------------- PUAN HESAPLAMA ----------------
@@ -294,6 +319,8 @@ function renderLogin(){
       <div class="err" id="loginErr"></div>
       <button class="btn" id="loginBtn">Giriş yap</button>
     </div>
+
+    ${renderScoringInfo()}
   `;
 }
 
@@ -357,6 +384,8 @@ function renderApp(){
 
     <div class="section-title">Geçmiş maçlar</div>
     ${past.length ? past.map(m => renderTicket(m, isAdmin)).join("") : '<div class="empty">Henüz oynanan maç yok.</div>'}
+
+    ${renderScoringInfo()}
   `;
 }
 
@@ -488,6 +517,26 @@ function renderSuggestionsList(){
         </div>
       </div>
     `).join("")}
+  `;
+}
+
+function renderScoringInfo(){
+  return `
+    <div class="section-title">Puanlama nasıl yapılır?</div>
+    <div class="info-section">
+      <div class="info-box">
+        <div class="rule"><span>Skor birebir tutarsa</span><span class="rpts">5 puan</span></div>
+        <div class="rule"><span>Skor tutmadı ama gol farkı doğruysa</span><span class="rpts">3 puan</span></div>
+        <div class="rule"><span>Sadece sonuç (galibiyet / beraberlik / mağlubiyet) doğruysa</span><span class="rpts">2 puan</span></div>
+        <div class="rule"><span>Hiçbiri tutmazsa</span><span class="rpts">0 puan</span></div>
+        <div class="note">
+          Ayrıca yakınlık bonusu var: tahmin ettiğin ev sahibi skoru gerçek sonuca en fazla
+          1 fark yakınsa +1, deplasman skoru için de aynı kural geçerli — toplamda en fazla
+          +2 ekstra puan. Yani hiçbir şey tam tutmasa bile skorların gerçeğe yakınsa yine de
+          küçük bir puan alabilirsin.
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -643,7 +692,7 @@ function bindEvents(){
       const text = input.value.trim();
       const status = document.getElementById("commentStatus");
       if (!text) return;
-      const newComment = { id: String(Date.now()), user: state.user, text, createdAt: Date.now() };
+      const newComment = { id: String(Date.now()), user: state.user, text: filterProfanity(text), createdAt: Date.now() };
       state.comments.push(newComment);
       commentSendBtn.disabled = true;
       status.textContent = "Gönderiliyor…"; status.className = "save-status";
