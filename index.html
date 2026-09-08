@@ -78,6 +78,10 @@
   .league .lrow{ display:flex; align-items:center; justify-content:space-between; padding:12px 18px; }
   .league .lrow + .lrow{ border-top:1px solid var(--card-border); }
   .league .lname{ font-family:'Oswald',sans-serif; font-size:16px; display:flex; align-items:center; gap:10px; }
+  .trend{ font-size:11px; }
+  .trend-up{ color:var(--turf); }
+  .trend-down{ color:var(--danger); }
+  .trend-same{ color:var(--muted); }
   .league .rank{ color:var(--muted); font-size:13px; width:16px; }
   .league .lname.leader{ color:var(--amber); }
   .league .lpts{ font-family:'Oswald',sans-serif; font-size:22px; }
@@ -439,6 +443,23 @@ function renderPasswordForm(){
   `;
 }
 
+function getTrend(list, user){
+  const publishedSorted = list.filter(m => m.published && m.points).sort((a,b)=>a.kickoffMs-b.kickoffMs);
+  if (publishedSorted.length < 2) return null;
+  const last = Number(publishedSorted[publishedSorted.length-1].points[user] || 0);
+  const prev = Number(publishedSorted[publishedSorted.length-2].points[user] || 0);
+  if (last > prev) return "up";
+  if (last < prev) return "down";
+  return "same";
+}
+
+function trendArrow(trend){
+  if (trend === "up") return `<span class="trend trend-up">▲</span>`;
+  if (trend === "down") return `<span class="trend trend-down">▼</span>`;
+  if (trend === "same") return `<span class="trend trend-same">▬</span>`;
+  return "";
+}
+
 function renderLeague(list){
   const totals = { anil: 0, semih: 0 };
   list.forEach(m => {
@@ -453,7 +474,7 @@ function renderLeague(list){
     <div class="league">
       ${ordered.map(([key, pts], i) => `
         <div class="lrow">
-          <div class="lname ${i===0 && pts>0 ? 'leader':''}"><span class="rank">${i+1}</span>${PLAYERS[key]}</div>
+          <div class="lname ${i===0 && pts>0 ? 'leader':''}"><span class="rank">${i+1}</span>${PLAYERS[key]}${trendArrow(getTrend(list, key))}</div>
           <div class="lpts">${pts}</div>
         </div>
       `).join("")}
