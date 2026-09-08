@@ -171,6 +171,11 @@
   .comment-form{ display:flex; gap:8px; margin-top:10px; }
   .comment-form input{ flex:1; padding:9px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
   .comment-form button{ padding:9px 16px; background:var(--amber); border:none; border-radius:8px; color:#1a1204; font-weight:600; font-size:13px; cursor:pointer; }
+  .comment-list{ margin-top:10px; max-height:220px; overflow-y:auto; }
+  .comment-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--card-border); font-size:12px; color:var(--chalk-dim); }
+  .comment-row:last-child{ border-bottom:none; }
+  .comment-row b{ color:var(--amber); }
+  .comment-row button{ background:none; border:1px solid var(--card-border); color:var(--danger); border-radius:6px; padding:3px 9px; font-size:11px; cursor:pointer; white-space:nowrap; }
 
   .info-section{ margin-top:36px; }
   .info-box{
@@ -246,7 +251,8 @@ function filterProfanity(text){
 
 // ---------------- PUAN HESAPLAMA ----------------
 // Kesin skor: 5. Diğer durumlarda: taban puan (gol farkı doğru: 3, sadece sonuç doğru: 2, ikisi de yanlış: 0)
-// + yakınlık bonusu (ev sahibi skoru gerçeğe en fazla 1 fark yakınsa +1, deplasman için de aynı, toplam en fazla +2).
+// + yakınlık bonusu: sonuç/fark tutmasa bile, ev sahibi skoru BİREBİR doğru bilindiyse +1,
+// deplasman skoru BİREBİR doğru bilindiyse +1 (her iki taraf birden doğruysa zaten en üstteki "kesin skor" dalına girer).
 function calcPoints(predStr, resHome, resAway){
   if (!predStr) return { points: 0, reason: "tahmin girilmedi" };
   const parts = predStr.split("-").map(Number);
@@ -264,13 +270,18 @@ function calcPoints(predStr, resHome, resAway){
   const outcomeMatch = sign(predDiff) === sign(realDiff);
   const base = diffMatch ? 3 : (outcomeMatch ? 2 : 0);
 
-  const homeDiff = Math.abs(ph - resHome);
-  const awayDiff = Math.abs(pa - resAway);
-  const proxBonus = (homeDiff <= 1 ? 1 : 0) + (awayDiff <= 1 ? 1 : 0);
+  const homeExact = ph === resHome;
+  const awayExact = pa === resAway;
+  const proxBonus = (homeExact ? 1 : 0) + (awayExact ? 1 : 0);
 
   const points = base + proxBonus;
   const baseLabel = diffMatch ? "gol farkı tuttu" : (outcomeMatch ? "sonuç tuttu" : "sonuç tutmadı");
-  const reason = proxBonus > 0 ? `${baseLabel}, yakınlık +${proxBonus} (${base}+${proxBonus})` : `${baseLabel} (+${base})`;
+  const proxLabelParts = [];
+  if (homeExact) proxLabelParts.push("ev sahibi skoru doğru");
+  if (awayExact) proxLabelParts.push("deplasman skoru doğru");
+  const reason = proxBonus > 0
+    ? `${baseLabel}, ${proxLabelParts.join(" + ")} (+${proxBonus}) (${base}+${proxBonus})`
+    : `${baseLabel} (+${base})`;
   return { points, reason };
 }
 
@@ -345,6 +356,16 @@ function renderTicker(showForm = true){
           <button id="commentSendBtn">Gönder</button>
         </div>
         <div class="save-status" id="commentStatus"></div>
+        ${sorted.length ? `
+          <div class="comment-list">
+            ${sorted.slice().reverse().map(c => `
+              <div class="comment-row">
+                <span><b>${PLAYERS[c.user]}:</b> ${escapeHtml(c.text)}</span>
+                <button data-delcomment="${c.id}">Sil</button>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
       ` : ""}
     </div>
   `;
@@ -530,10 +551,10 @@ function renderScoringInfo(){
         <div class="rule"><span>Sadece sonuç (galibiyet / beraberlik / mağlubiyet) doğruysa</span><span class="rpts">2 puan</span></div>
         <div class="rule"><span>Hiçbiri tutmazsa</span><span class="rpts">0 puan</span></div>
         <div class="note">
-          Ayrıca yakınlık bonusu var: tahmin ettiğin ev sahibi skoru gerçek sonuca en fazla
-          1 fark yakınsa +1, deplasman skoru için de aynı kural geçerli — toplamda en fazla
-          +2 ekstra puan. Yani hiçbir şey tam tutmasa bile skorların gerçeğe yakınsa yine de
-          küçük bir puan alabilirsin.
+          Ayrıca yakınlık bonusu var: sonuç tamamen tutmasa bile, ev sahibi skorunu birebir
+          doğru bildiysen +1, deplasman skorunu birebir doğru bildiysen +1 — toplamda en fazla
+          +2 ekstra puan. Örnek: 2-1 dedin, maç 2-3 bitti; sonuç tutmadı ama ev sahibinin 2 gol
+          atacağını doğru bildiğin için yine de +1 puan alırsın.
         </div>
       </div>
     </div>
@@ -708,6 +729,21 @@ function bindEvents(){
     commentSendBtn.onclick = sendComment;
     document.getElementById("commentInput").addEventListener("keydown", e => { if (e.key === "Enter") sendComment(); });
   }
+
+  document.querySelectorAll("[data-delcomment]").forEach(btn=>{
+    btn.onclick = async () => {
+      const commentId = btn.dataset.delcomment;
+      const backup = state.comments;
+      state.comments = state.comments.filter(c => c.id !== commentId);
+      btn.disabled = true;
+      try{ await saveComments(); render(); }
+      catch(e){
+        state.comments = backup;
+        alert("Silinemedi: " + e.message);
+        render();
+      }
+    };
+  });
 
   const pwToggleBtn = document.getElementById("pwToggleBtn");
   if (pwToggleBtn){
