@@ -356,16 +356,20 @@ function renderTicker(showForm = true){
           <button id="commentSendBtn">Gönder</button>
         </div>
         <div class="save-status" id="commentStatus"></div>
-        ${sorted.length ? `
-          <div class="comment-list">
-            ${sorted.slice().reverse().map(c => `
-              <div class="comment-row">
-                <span><b>${PLAYERS[c.user]}:</b> ${escapeHtml(c.text)}</span>
-                ${c.user === state.user ? `<button data-delcomment="${c.id}">Sil</button>` : ""}
-              </div>
-            `).join("")}
-          </div>
-        ` : ""}
+        ${(() => {
+          const mine = sorted.filter(c => c.user === state.user).reverse();
+          if (!mine.length) return "";
+          return `
+            <div class="comment-list">
+              ${mine.map(c => `
+                <div class="comment-row">
+                  <span><b>${PLAYERS[c.user]}:</b> ${escapeHtml(c.text)}</span>
+                  <button data-delcomment="${c.id}">Sil</button>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        })()}
       ` : ""}
     </div>
   `;
