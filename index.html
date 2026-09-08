@@ -361,7 +361,7 @@ function renderTicker(showForm = true){
             ${sorted.slice().reverse().map(c => `
               <div class="comment-row">
                 <span><b>${PLAYERS[c.user]}:</b> ${escapeHtml(c.text)}</span>
-                <button data-delcomment="${c.id}">Sil</button>
+                ${c.user === state.user ? `<button data-delcomment="${c.id}">Sil</button>` : ""}
               </div>
             `).join("")}
           </div>
@@ -733,6 +733,8 @@ function bindEvents(){
   document.querySelectorAll("[data-delcomment]").forEach(btn=>{
     btn.onclick = async () => {
       const commentId = btn.dataset.delcomment;
+      const target = state.comments.find(c => c.id === commentId);
+      if (!target || target.user !== state.user) return; // sadece kendi yorumunu silebilir
       const backup = state.comments;
       state.comments = state.comments.filter(c => c.id !== commentId);
       btn.disabled = true;
