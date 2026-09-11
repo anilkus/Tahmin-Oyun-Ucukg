@@ -82,6 +82,13 @@
   .trend-up{ color:var(--turf); }
   .trend-down{ color:var(--danger); }
   .trend-same{ color:var(--muted); }
+
+  .h2h-box{
+    background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius);
+    padding:14px 18px; margin-bottom:10px; display:flex; align-items:center; justify-content:center; gap:16px;
+  }
+  .h2h-name{ font-family:'Oswald',sans-serif; font-size:14px; color:var(--chalk-dim); }
+  .h2h-score{ font-family:'Oswald',sans-serif; font-size:24px; color:var(--amber); }
   .league .rank{ color:var(--muted); font-size:13px; width:16px; }
   .league .lname.leader{ color:var(--amber); }
   .league .lpts{ font-family:'Oswald',sans-serif; font-size:22px; }
@@ -323,6 +330,8 @@ function renderLogin(){
 
     ${renderLeague(list)}
 
+    ${renderHeadToHead(list)}
+
     <div class="login-card">
       <h1>Skor Tahmin <span>Ligi</span></h1>
       <p>Maçtan önce tahminini gir, maç saatinde skorlar açılır.</p>
@@ -404,6 +413,8 @@ function renderApp(){
 
     ${renderLeague(list)}
 
+    ${renderHeadToHead(list)}
+
     ${isAdmin && state.suggestions.length ? renderSuggestionsList() : ""}
 
     ${isAdmin ? renderNewMatchForm() : renderSuggestForm()}
@@ -478,6 +489,25 @@ function renderLeague(list){
           <div class="lpts">${pts}</div>
         </div>
       `).join("")}
+    </div>
+  `;
+}
+
+function renderHeadToHead(list){
+  let anilWins = 0, semihWins = 0;
+  list.filter(m => m.published && m.points).forEach(m => {
+    const a = Number(m.points.anil || 0);
+    const s = Number(m.points.semih || 0);
+    if (a > s) anilWins++;
+    else if (s > a) semihWins++;
+    // eşitlikte kimseye yazılmaz
+  });
+  return `
+    <div class="section-title">İddia skoru (maç bazlı)</div>
+    <div class="h2h-box">
+      <span class="h2h-name">${PLAYERS.anil}</span>
+      <span class="h2h-score">${anilWins} - ${semihWins}</span>
+      <span class="h2h-name">${PLAYERS.semih}</span>
     </div>
   `;
 }
