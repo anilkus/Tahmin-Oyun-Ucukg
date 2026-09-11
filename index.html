@@ -454,13 +454,23 @@ function renderPasswordForm(){
   `;
 }
 
+function rankAtIndex(publishedSorted, uptoIndex, user){
+  const totals = { anil: 0, semih: 0 };
+  for (let i = 0; i <= uptoIndex; i++){
+    totals.anil += Number(publishedSorted[i].points.anil || 0);
+    totals.semih += Number(publishedSorted[i].points.semih || 0);
+  }
+  const order = Object.entries(totals).sort((a,b) => b[1]-a[1]).map(e => e[0]);
+  return order.indexOf(user) + 1; // 1 = birinci sıra, 2 = ikinci sıra
+}
+
 function getTrend(list, user){
   const publishedSorted = list.filter(m => m.published && m.points).sort((a,b)=>a.kickoffMs-b.kickoffMs);
   if (publishedSorted.length < 2) return null;
-  const last = Number(publishedSorted[publishedSorted.length-1].points[user] || 0);
-  const prev = Number(publishedSorted[publishedSorted.length-2].points[user] || 0);
-  if (last > prev) return "up";
-  if (last < prev) return "down";
+  const prevRank = rankAtIndex(publishedSorted, publishedSorted.length-2, user); // son maçtan önceki sıralama
+  const currRank = rankAtIndex(publishedSorted, publishedSorted.length-1, user); // son maç dahil güncel sıralama
+  if (currRank < prevRank) return "up";   // sıra numarası küçüldü = yükseldi (2.'den 1.'e gibi)
+  if (currRank > prevRank) return "down";
   return "same";
 }
 
