@@ -89,6 +89,15 @@
   }
   .h2h-name{ font-family:'Oswald',sans-serif; font-size:14px; color:var(--chalk-dim); }
   .h2h-score{ font-family:'Oswald',sans-serif; font-size:24px; color:var(--amber); }
+
+  .bet-item{
+    background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius);
+    padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:10px;
+  }
+  .bet-item .bet-desc{ font-size:13px; color:var(--chalk-dim); }
+  .bet-item .bet-winner{ font-family:'Oswald',sans-serif; font-size:13px; color:var(--amber); white-space:nowrap; }
+  .bet-item .bet-del{ background:none; border:1px solid var(--card-border); color:var(--danger); border-radius:6px; padding:3px 9px; font-size:11px; cursor:pointer; }
+  .bet-form select{ width:100%; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
   .league .rank{ color:var(--muted); font-size:13px; width:16px; }
   .league .lname.leader{ color:var(--amber); }
   .league .lpts{ font-family:'Oswald',sans-serif; font-size:22px; }
@@ -212,6 +221,7 @@ const matchesRef = db.ref("matches");
 const keysRef = db.ref("keys");
 const suggestionsRef = db.ref("suggestions");
 const commentsRef = db.ref("comments");
+const otherBetsRef = db.ref("otherBets");
 
 let state = {
   user: localStorage.getItem("skor_user") || null,
@@ -219,6 +229,7 @@ let state = {
   matches: [],
   suggestions: [],
   comments: [],
+  otherBets: [],
   keys: { anil: CONFIG.ANIL_KEY, semih: CONFIG.SEMIH_KEY },
   showPasswordForm: false,
   passwordMsg: "",
@@ -239,6 +250,10 @@ async function saveSuggestions(){
 
 async function saveComments(){
   await commentsRef.set(state.comments);
+}
+
+async function saveOtherBets(){
+  await otherBetsRef.set(state.otherBets);
 }
 
 function escapeHtml(str){
@@ -332,6 +347,8 @@ function renderLogin(){
 
     ${renderHeadToHead(list)}
 
+    ${renderOtherBets(false)}
+
     <div class="login-card">
       <h1>Skor Tahmin <span>Ligi</span></h1>
       <p>Maçtan önce tahminini gir, maç saatinde skorlar açılır.</p>
@@ -414,6 +431,8 @@ function renderApp(){
     ${renderLeague(list)}
 
     ${renderHeadToHead(list)}
+
+    ${renderOtherBets(isAdmin)}
 
     ${isAdmin && state.suggestions.length ? renderSuggestionsList() : ""}
 
@@ -519,6 +538,38 @@ function renderHeadToHead(list){
       <span class="h2h-score">${anilWins} - ${semihWins}</span>
       <span class="h2h-name">${PLAYERS.semih}</span>
     </div>
+  `;
+}
+
+const WINNER_LABEL = { anil: "Anıl kazandı", semih: "Semih kazandı", draw: "Berabere" };
+
+function renderOtherBets(isAdmin){
+  const list = state.otherBets;
+  return `
+    <div class="section-title">Diğer iddialar</div>
+    ${list.length ? list.slice().reverse().map(b => `
+      <div class="bet-item">
+        <span class="bet-desc">${escapeHtml(b.description)}</span>
+        <span class="bet-winner">${WINNER_LABEL[b.winner] || ""}</span>
+        ${isAdmin ? `<button class="bet-del" data-delbet="${b.id}">Sil</button>` : ""}
+      </div>
+    `).join("") : '<div class="empty">Henüz iddia girilmedi.</div>'}
+    ${isAdmin ? `
+      <div class="new-match bet-form">
+        <div class="grid">
+          <div class="full"><label>İddia açıklaması</label><input id="betDesc" placeholder="örn. Bu hafta kim daha çok iş yapacak"></div>
+          <div class="full"><label>Kazanan</label>
+            <select id="betWinner">
+              <option value="anil">Anıl kazandı</option>
+              <option value="semih">Semih kazandı</option>
+              <option value="draw">Berabere</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn" id="addBetBtn">Ekle</button>
+        <div class="save-status" id="betStatus"></div>
+      </div>
+    ` : ""}
   `;
 }
 
@@ -884,6 +935,46 @@ function bindEvents(){
     };
   }
 
+  const addBetBtn = document.getElementById("addBetBtn");
+  if (addBetBtn){
+    addBetBtn.onclick = async () => {
+      const desc = document.getElementById("betDesc").value.trim();
+      const winner = document.getElementById("betWinner").value;
+      const status = document.getElementById("betStatus");
+      if (!desc){
+        status.textContent = "İddia açıklaması gir."; status.className = "save-status error";
+        return;
+      }
+      const newBet = { id: String(Date.now()), description: filterProfanity(desc), winner, createdAt: Date.now() };
+      state.otherBets.push(newBet);
+      addBetBtn.disabled = true;
+      status.textContent = "Ekleniyor…"; status.className = "save-status";
+      try{
+        await saveOtherBets();
+        render();
+      }catch(e){
+        state.otherBets.pop();
+        status.textContent = "Eklenemedi: " + e.message; status.className = "save-status error";
+        addBetBtn.disabled = false;
+      }
+    };
+  }
+
+  document.querySelectorAll("[data-delbet]").forEach(btn=>{
+    btn.onclick = async () => {
+      const betId = btn.dataset.delbet;
+      const backup = state.otherBets;
+      state.otherBets = state.otherBets.filter(b => b.id !== betId);
+      btn.disabled = true;
+      try{ await saveOtherBets(); render(); }
+      catch(e){
+        state.otherBets = backup;
+        alert("Silinemedi: " + e.message);
+        render();
+      }
+    };
+  });
+
   const sendSuggestionBtn = document.getElementById("sendSuggestionBtn");
   if (sendSuggestionBtn){
     sendSuggestionBtn.onclick = async () => {
@@ -1082,6 +1173,11 @@ suggestionsRef.on("value", snap => {
 
 commentsRef.on("value", snap => {
   state.comments = snap.val() || [];
+  render();
+});
+
+otherBetsRef.on("value", snap => {
+  state.otherBets = snap.val() || [];
   render();
 });
 </script>
