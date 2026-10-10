@@ -575,9 +575,7 @@ function renderOtherBets(isAdmin){
   const pending = all.filter(b => !b.winner || b.winner === "pending");
   const resolved = all.filter(b => b.winner && b.winner !== "pending");
 
-  const pendingHtml = pending.length ? `
-    <div class="section-title">Yaklaşan iddialar</div>
-    ${pending.map(b => `
+  const pendingCards = pending.length ? pending.map(b => `
       <div class="rainbow-card">
         <div class="rainbow-inner">
           <div class="bet-top">
@@ -597,23 +595,19 @@ function renderOtherBets(isAdmin){
           ` : ""}
         </div>
       </div>
-    `).join("")}
-  ` : "";
+    `).join("") : `
+      <div class="rainbow-card">
+        <div class="rainbow-inner"><span class="bet-desc" style="color:var(--chalk-dim);">Şu an bekleyen iddia yok.</span></div>
+      </div>
+    `;
 
   return `
-    ${pendingHtml}
-    <div class="section-title">Diğer iddialar</div>
-    ${resolved.length ? resolved.map(b => `
-      <div class="bet-item">
-        <span class="bet-desc">${escapeHtml(b.description)}</span>
-        <span class="bet-winner">${WINNER_LABEL[b.winner] || ""}</span>
-        ${isAdmin ? `<button class="bet-del" data-delbet="${b.id}">Sil</button>` : ""}
-      </div>
-    `).join("") : '<div class="empty">Henüz sonuçlanan iddia yok.</div>'}
+    <div class="section-title">Yaklaşan iddialar</div>
+    ${pendingCards}
     ${isAdmin ? `
       <div class="new-match bet-form">
         <div class="grid">
-          <div class="full"><label>İddia açıklaması</label><input id="betDesc" placeholder="örn. Bu hafta kim daha çok iş yapacak"></div>
+          <div class="full"><label>Yeni iddia</label><input id="betDesc" placeholder="örn. Bu hafta kim daha çok iş yapacak"></div>
           <div class="full"><label>Sonuç</label>
             <select id="betWinner">
               <option value="pending">Henüz belli değil (yaklaşan iddia)</option>
@@ -623,10 +617,19 @@ function renderOtherBets(isAdmin){
             </select>
           </div>
         </div>
-        <button class="btn" id="addBetBtn">Ekle</button>
+        <button class="btn" id="addBetBtn">İddiayı ekle</button>
         <div class="save-status" id="betStatus"></div>
       </div>
     ` : ""}
+
+    <div class="section-title">Sonuçlanan iddialar</div>
+    ${resolved.length ? resolved.map(b => `
+      <div class="bet-item">
+        <span class="bet-desc">${escapeHtml(b.description)}</span>
+        <span class="bet-winner">${WINNER_LABEL[b.winner] || ""}</span>
+        ${isAdmin ? `<button class="bet-del" data-delbet="${b.id}">Sil</button>` : ""}
+      </div>
+    `).join("") : '<div class="empty">Henüz sonuçlanan iddia yok.</div>'}
   `;
 }
 
