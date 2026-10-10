@@ -100,7 +100,7 @@
   .bet-item .bet-del{ background:none; border:1px solid var(--card-border); color:var(--danger); border-radius:6px; padding:3px 9px; font-size:11px; cursor:pointer; }
   .rainbow-card{ position:relative; border-radius:12px; padding:2px; overflow:hidden; margin-bottom:10px; }
   .rainbow-card::before{
-    content:""; position:absolute; inset:-100%;
+    content:""; position:absolute; left:50%; top:50%; width:1400px; height:1400px; margin:-700px 0 0 -700px;
     background:conic-gradient(#ff3b3b, #ff9f1c, #ffe14d, #3ddc84, #2ec4ff, #5b6cff, #c04dff, #ff3b3b);
     animation:rainbow-spin 3s linear infinite;
   }
@@ -591,65 +591,32 @@ function renderHeadToHead(list){
 const WINNER_LABEL = { anil: "Anıl kazandı", semih: "Semih kazandı", draw: "Berabere" };
 
 function renderOtherBets(isAdmin){
-  const all = state.otherBets.slice().reverse();
-  const pending = all.filter(b => !b.winner || b.winner === "pending");
-  const resolved = all.filter(b => b.winner && b.winner !== "pending");
-
-  const pendingCards = pending.length ? pending.map(b => `
-      <div class="rainbow-card">
-        <div class="rainbow-inner">
-          <div class="bet-top">
-            <span class="new-badge">YENİ</span>
-            <span class="bet-desc">${escapeHtml(b.description)}</span>
-          </div>
-          ${isAdmin ? `
-            <div class="bet-admin-row">
-              <select class="resolve-select" data-resolvefor="${b.id}">
-                <option value="anil">Anıl kazandı</option>
-                <option value="semih">Semih kazandı</option>
-                <option value="draw">Berabere</option>
-              </select>
-              <button class="resolve-btn" data-resolvebet="${b.id}">Sonuçlandır</button>
-              <button class="bet-del" data-delbet="${b.id}">Sil</button>
-            </div>
-          ` : ""}
-        </div>
-      </div>
-    `).join("") : `
-      <div class="rainbow-card">
-        <div class="rainbow-inner"><span class="bet-desc" style="color:var(--chalk-dim);">Şu an bekleyen iddia yok.</span></div>
-      </div>
-    `;
-
+  const list = state.otherBets.slice().reverse();
   return `
-    <div class="section-title">Yaklaşan iddialar</div>
-    ${pendingCards}
+    <div class="section-title">Diğer iddialar</div>
+    ${list.length ? list.map(b => `
+      <div class="bet-item">
+        <span class="bet-desc">${escapeHtml(b.description)}</span>
+        <span class="bet-winner">${WINNER_LABEL[b.winner] || ""}</span>
+        ${isAdmin ? `<button class="bet-del" data-delbet="${b.id}">Sil</button>` : ""}
+      </div>
+    `).join("") : '<div class="empty">Henüz iddia girilmedi.</div>'}
     ${isAdmin ? `
       <div class="new-match bet-form">
         <div class="grid">
-          <div class="full"><label>Yeni iddia</label><input id="betDesc" placeholder="örn. Bu hafta kim daha çok iş yapacak"></div>
-          <div class="full"><label>Sonuç</label>
+          <div class="full"><label>İddia açıklaması</label><input id="betDesc" placeholder="örn. Bu hafta kim daha çok iş yapacak"></div>
+          <div class="full"><label>Kazanan</label>
             <select id="betWinner">
-              <option value="pending">Henüz belli değil (yaklaşan iddia)</option>
               <option value="anil">Anıl kazandı</option>
               <option value="semih">Semih kazandı</option>
               <option value="draw">Berabere</option>
             </select>
           </div>
         </div>
-        <button class="btn" id="addBetBtn">İddiayı ekle</button>
+        <button class="btn" id="addBetBtn">Ekle</button>
         <div class="save-status" id="betStatus"></div>
       </div>
     ` : ""}
-
-    <div class="section-title">Sonuçlanan iddialar</div>
-    ${resolved.length ? resolved.map(b => `
-      <div class="bet-item">
-        <span class="bet-desc">${escapeHtml(b.description)}</span>
-        <span class="bet-winner">${WINNER_LABEL[b.winner] || ""}</span>
-        ${isAdmin ? `<button class="bet-del" data-delbet="${b.id}">Sil</button>` : ""}
-      </div>
-    `).join("") : '<div class="empty">Henüz sonuçlanan iddia yok.</div>'}
   `;
 }
 
