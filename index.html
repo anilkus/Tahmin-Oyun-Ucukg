@@ -88,6 +88,7 @@
     padding:14px 18px; margin-bottom:10px; display:flex; align-items:center; justify-content:center; gap:16px;
   }
   .h2h-name{ font-family:'Oswald',sans-serif; font-size:14px; color:var(--chalk-dim); }
+  .h2h-note{ font-size:12px; color:var(--muted); text-align:center; margin:-2px 0 10px; }
   .h2h-score{ font-family:'Oswald',sans-serif; font-size:24px; color:var(--amber); }
 
   .bet-item{
@@ -541,21 +542,29 @@ function renderLeague(list){
 }
 
 function renderHeadToHead(list){
-  let anilWins = 0, semihWins = 0;
+  let matchAnil = 0, matchSemih = 0, betAnil = 0, betSemih = 0;
   list.filter(m => m.published && m.points).forEach(m => {
     const a = Number(m.points.anil || 0);
     const s = Number(m.points.semih || 0);
-    if (a > s) anilWins++;
-    else if (s > a) semihWins++;
+    if (a > s) matchAnil++;
+    else if (s > a) matchSemih++;
     // eşitlikte kimseye yazılmaz
   });
+  // sonuçlanan diğer iddialar da iddia skoruna işlenir (berabere kimseye yazılmaz)
+  state.otherBets.forEach(b => {
+    if (b.winner === "anil") betAnil++;
+    else if (b.winner === "semih") betSemih++;
+  });
+  const anilWins = matchAnil + betAnil;
+  const semihWins = matchSemih + betSemih;
   return `
-    <div class="section-title">İddia skoru (maç bazlı)</div>
+    <div class="section-title">İddia skoru</div>
     <div class="h2h-box">
       <span class="h2h-name">${PLAYERS.anil}</span>
       <span class="h2h-score">${anilWins} - ${semihWins}</span>
       <span class="h2h-name">${PLAYERS.semih}</span>
     </div>
+    <div class="h2h-note">Maçlar: ${matchAnil} - ${matchSemih} · Diğer iddialar: ${betAnil} - ${betSemih}</div>
   `;
 }
 
