@@ -357,6 +357,24 @@ function getMatchList(){
   return state.matches.map(m => ({...m, kickoffMs: new Date(m.kickoff).getTime()}));
 }
 
+function renderPublicUpcoming(list){
+  const now = Date.now();
+  const upcoming = list.filter(m => m.kickoffMs > now).sort((a,b)=>a.kickoffMs-b.kickoffMs);
+  return `
+    <div class="section-title">Yaklaşan maçlar</div>
+    ${upcoming.length ? upcoming.map(m => `
+      <div class="rainbow-card">
+        <div class="rainbow-inner">
+          <div class="head-left">
+            <div class="teams">${escapeHtml(m.home)}<span class="vs">vs</span>${escapeHtml(m.away)}</div>
+            <div class="kickoff live">${new Date(m.kickoffMs).toLocaleString("tr-TR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}</div>
+          </div>
+        </div>
+      </div>
+    `).join("") : '<div class="empty">Yaklaşan maç yok.</div>'}
+  `;
+}
+
 function renderLogin(){
   const list = getMatchList();
   return `
@@ -365,6 +383,8 @@ function renderLogin(){
     ${renderLeague(list)}
 
     ${renderHeadToHead(list)}
+
+    ${renderPublicUpcoming(list)}
 
     ${renderOtherBets(false)}
 
