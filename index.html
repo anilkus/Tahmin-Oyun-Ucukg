@@ -97,6 +97,24 @@
   .bet-item .bet-desc{ font-size:13px; color:var(--chalk-dim); }
   .bet-item .bet-winner{ font-family:'Oswald',sans-serif; font-size:13px; color:var(--amber); white-space:nowrap; }
   .bet-item .bet-del{ background:none; border:1px solid var(--card-border); color:var(--danger); border-radius:6px; padding:3px 9px; font-size:11px; cursor:pointer; }
+  .rainbow-card{ position:relative; border-radius:12px; padding:2px; overflow:hidden; margin-bottom:10px; }
+  .rainbow-card::before{
+    content:""; position:absolute; inset:-100%;
+    background:conic-gradient(#ff3b3b, #ff9f1c, #ffe14d, #3ddc84, #2ec4ff, #5b6cff, #c04dff, #ff3b3b);
+    animation:rainbow-spin 3s linear infinite;
+  }
+  .rainbow-inner{ position:relative; background:var(--card); border-radius:10px; padding:14px 16px; }
+  .bet-top{ display:flex; align-items:center; gap:10px; }
+  .bet-top .bet-desc{ font-size:14px; color:var(--chalk); }
+  .new-badge{
+    font-family:'Oswald',sans-serif; font-size:11px; letter-spacing:.06em; color:#1a1204;
+    background:linear-gradient(90deg,#ff9f1c,#ffe14d); border-radius:20px; padding:2px 9px; white-space:nowrap;
+  }
+  .bet-admin-row{ display:flex; gap:8px; margin-top:12px; align-items:center; }
+  .bet-admin-row select{ flex:1; padding:8px 10px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:13px; }
+  .resolve-btn{ padding:8px 12px; background:var(--turf); border:none; border-radius:8px; color:#06210f; font-weight:600; font-size:12px; cursor:pointer; white-space:nowrap; }
+  .bet-admin-row .bet-del{ background:none; border:1px solid var(--card-border); color:var(--danger); border-radius:6px; padding:7px 10px; font-size:12px; cursor:pointer; }
+  @keyframes rainbow-spin{ to{ transform:rotate(360deg); } }
   .bet-form select{ width:100%; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
   .league .rank{ color:var(--muted); font-size:13px; width:16px; }
   .league .lname.leader{ color:var(--amber); }
@@ -544,22 +562,52 @@ function renderHeadToHead(list){
 const WINNER_LABEL = { anil: "Anıl kazandı", semih: "Semih kazandı", draw: "Berabere" };
 
 function renderOtherBets(isAdmin){
-  const list = state.otherBets;
+  const all = state.otherBets.slice().reverse();
+  const pending = all.filter(b => !b.winner || b.winner === "pending");
+  const resolved = all.filter(b => b.winner && b.winner !== "pending");
+
+  const pendingHtml = pending.length ? `
+    <div class="section-title">Yaklaşan iddialar</div>
+    ${pending.map(b => `
+      <div class="rainbow-card">
+        <div class="rainbow-inner">
+          <div class="bet-top">
+            <span class="new-badge">YENİ</span>
+            <span class="bet-desc">${escapeHtml(b.description)}</span>
+          </div>
+          ${isAdmin ? `
+            <div class="bet-admin-row">
+              <select class="resolve-select" data-resolvefor="${b.id}">
+                <option value="anil">Anıl kazandı</option>
+                <option value="semih">Semih kazandı</option>
+                <option value="draw">Berabere</option>
+              </select>
+              <button class="resolve-btn" data-resolvebet="${b.id}">Sonuçlandır</button>
+              <button class="bet-del" data-delbet="${b.id}">Sil</button>
+            </div>
+          ` : ""}
+        </div>
+      </div>
+    `).join("")}
+  ` : "";
+
   return `
+    ${pendingHtml}
     <div class="section-title">Diğer iddialar</div>
-    ${list.length ? list.slice().reverse().map(b => `
+    ${resolved.length ? resolved.map(b => `
       <div class="bet-item">
         <span class="bet-desc">${escapeHtml(b.description)}</span>
         <span class="bet-winner">${WINNER_LABEL[b.winner] || ""}</span>
         ${isAdmin ? `<button class="bet-del" data-delbet="${b.id}">Sil</button>` : ""}
       </div>
-    `).join("") : '<div class="empty">Henüz iddia girilmedi.</div>'}
+    `).join("") : '<div class="empty">Henüz sonuçlanan iddia yok.</div>'}
     ${isAdmin ? `
       <div class="new-match bet-form">
         <div class="grid">
           <div class="full"><label>İddia açıklaması</label><input id="betDesc" placeholder="örn. Bu hafta kim daha çok iş yapacak"></div>
-          <div class="full"><label>Kazanan</label>
+          <div class="full"><label>Sonuç</label>
             <select id="betWinner">
+              <option value="pending">Henüz belli değil (yaklaşan iddia)</option>
               <option value="anil">Anıl kazandı</option>
               <option value="semih">Semih kazandı</option>
               <option value="draw">Berabere</option>
@@ -959,6 +1007,24 @@ function bindEvents(){
       }
     };
   }
+
+  document.querySelectorAll("[data-resolvebet]").forEach(btn=>{
+    btn.onclick = async () => {
+      const betId = btn.dataset.resolvebet;
+      const select = document.querySelector(`[data-resolvefor="${betId}"]`);
+      const bet = state.otherBets.find(b => b.id === betId);
+      if (!bet || !select) return;
+      const prev = bet.winner;
+      bet.winner = select.value;
+      btn.disabled = true;
+      try{ await saveOtherBets(); render(); }
+      catch(e){
+        bet.winner = prev;
+        alert("Kaydedilemedi: " + e.message);
+        render();
+      }
+    };
+  });
 
   document.querySelectorAll("[data-delbet]").forEach(btn=>{
     btn.onclick = async () => {
