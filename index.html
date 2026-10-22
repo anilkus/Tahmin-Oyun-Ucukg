@@ -116,6 +116,22 @@
   .resolve-btn{ padding:8px 12px; background:var(--turf); border:none; border-radius:8px; color:#06210f; font-weight:600; font-size:12px; cursor:pointer; white-space:nowrap; }
   .bet-admin-row .bet-del{ background:none; border:1px solid var(--card-border); color:var(--danger); border-radius:6px; padding:7px 10px; font-size:12px; cursor:pointer; }
   @keyframes rainbow-spin{ to{ transform:rotate(360deg); } }
+  .ucl-h2h{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:18px 16px 14px; margin-bottom:10px; }
+  .ucl-h2h .big{ display:flex; align-items:center; justify-content:space-between; }
+  .ucl-h2h .side{ flex:1; text-align:center; }
+  .ucl-h2h .side .num{ font-family:'Oswald',sans-serif; font-size:40px; line-height:1; color:var(--chalk); }
+  .ucl-h2h .side.lead .num{ color:var(--amber); }
+  .ucl-h2h .side .who{ font-size:13px; color:var(--chalk-dim); margin-top:4px; }
+  .ucl-h2h .vs{ font-family:'Oswald',sans-serif; color:var(--muted); font-size:15px; padding:0 8px; }
+  .ucl-h2h .sub{ display:flex; justify-content:space-between; margin-top:14px; padding-top:12px; border-top:1px solid var(--card-border); }
+  .ucl-h2h .sub .col{ flex:1; text-align:center; }
+  .ucl-h2h .sub .n{ font-family:'Oswald',sans-serif; font-size:18px; color:var(--chalk); }
+  .ucl-h2h .sub .l{ font-size:11px; color:var(--muted); }
+  .ucl-tabs{ display:flex; gap:6px; overflow-x:auto; margin-bottom:10px; padding-bottom:4px; }
+  .ucl-tabs button{ background:none; border:none; border-bottom:2px solid transparent; color:var(--muted); font-family:'Oswald',sans-serif; font-size:14px; padding:8px 12px; cursor:pointer; white-space:nowrap; }
+  .ucl-tabs button.active{ color:var(--chalk); border-bottom-color:var(--amber); }
+  .ucl-week-panel{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:16px; margin-bottom:10px; }
+  .ucl-week-panel .wlabel{ text-align:center; font-size:12px; color:var(--muted); margin-bottom:6px; }
   .ucl-total{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; }
   .ucl-total .ucl-row{ display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:13px; color:var(--chalk-dim); }
   .ucl-total .ucl-row + .ucl-row{ border-top:1px solid var(--card-border); }
@@ -264,6 +280,7 @@ let state = {
   comments: [],
   otherBets: [],
   ucl: [],
+  uclTab: null,
   keys: { anil: CONFIG.ANIL_KEY, semih: CONFIG.SEMIH_KEY },
   showPasswordForm: false,
   passwordMsg: "",
@@ -620,26 +637,47 @@ function renderUcl(isAdmin){
     t.anilWin += Number(w.anilWin||0); t.draw += Number(w.draw||0); t.semihWin += Number(w.semihWin||0);
     t.anilPts += Number(w.anilPts||0); t.semihPts += Number(w.semihPts||0);
   });
-  const rows = [["anil", t.anilPts, t.anilWin], ["semih", t.semihPts, t.semihWin]].sort((a,b)=>b[1]-a[1]);
-  return `
-    <div class="section-title">UEFA Şampiyonlar Ligi oyunu</div>
-    <div class="ucl-total">
-      ${rows.map(([k,pts,wins]) => `
-        <div class="ucl-row">
-          <div><div class="ucl-name">${PLAYERS[k]}</div><div class="ucl-detail">${wins} tahmin kazandı</div></div>
-          <div class="ucl-pts">${pts}</div>
-        </div>`).join("")}
-      <div class="ucl-row"><span>Berabere kalan tahmin</span><span>${t.draw}</span></div>
-    </div>
-    ${weeks.length ? weeks.slice().reverse().map(w => `
-      <div class="ucl-week">
-        <div>
-          <div class="wtitle">${escapeHtml(w.label)}</div>
-          <div class="wdetail">Anıl ${w.anilWin} · Berabere ${w.draw} · Semih ${w.semihWin} | Puan: Anıl ${w.anilPts} - Semih ${w.semihPts}</div>
+  const sel = weeks.find(w => w.id === state.uclTab) || weeks[weeks.length-1];
+  const anilLead = t.anilPts > t.semihPts, semihLead = t.semihPts > t.anilPts;
+
+  const total = `
+    <div class="ucl-h2h">
+      <div class="big">
+        <div class="side ${anilLead?'lead':''}"><div class="num">${t.anilPts}</div><div class="who">${PLAYERS.anil}</div></div>
+        <div class="vs">VS</div>
+        <div class="side ${semihLead?'lead':''}"><div class="num">${t.semihPts}</div><div class="who">${PLAYERS.semih}</div></div>
+      </div>
+      <div class="sub">
+        <div class="col"><div class="n">${t.anilWin}</div><div class="l">kazandı</div></div>
+        <div class="col"><div class="n">${t.draw}</div><div class="l">berabere</div></div>
+        <div class="col"><div class="n">${t.semihWin}</div><div class="l">kazandı</div></div>
+      </div>
+    </div>`;
+
+  const tabs = weeks.length ? `
+    <div class="ucl-tabs">
+      ${weeks.map(w => `<button data-ucltab="${w.id}" class="${sel && sel.id===w.id?'active':''}">${escapeHtml(w.label)}</button>`).join("")}
+    </div>` : "";
+
+  const panel = sel ? `
+    <div class="ucl-week-panel">
+      <div class="wlabel">${escapeHtml(sel.label)} puanları</div>
+      <div class="ucl-h2h" style="background:none;border:none;padding:0;margin:0;">
+        <div class="big">
+          <div class="side ${sel.anilPts>sel.semihPts?'lead':''}"><div class="num">${sel.anilPts}</div></div>
+          <div class="vs">VS</div>
+          <div class="side ${sel.semihPts>sel.anilPts?'lead':''}"><div class="num">${sel.semihPts}</div></div>
         </div>
-        ${isAdmin ? `<button class="bet-del" data-delucl="${w.id}">Sil</button>` : ""}
-      </div>`).join("") : '<div class="empty">Henüz hafta girilmedi.</div>'}
-    ${isAdmin ? `
+        <div class="sub">
+          <div class="col"><div class="n">${sel.anilWin}</div><div class="l">kazandı</div></div>
+          <div class="col"><div class="n">${sel.draw}</div><div class="l">berabere</div></div>
+          <div class="col"><div class="n">${sel.semihWin}</div><div class="l">kazandı</div></div>
+        </div>
+      </div>
+      ${isAdmin ? `<div style="text-align:right;margin-top:10px;"><button class="bet-del" data-delucl="${sel.id}">Bu haftayı sil</button></div>` : ""}
+    </div>` : '<div class="empty">Henüz hafta girilmedi.</div>';
+
+  const form = isAdmin ? `
       <div class="new-match ucl-form">
         <div class="section-inner-title">Haftayı ekle</div>
         <div style="margin-bottom:10px;"><label>Hafta adı</label><input id="uclLabel" value="${weeks.length+1}. Hafta"></div>
@@ -654,7 +692,14 @@ function renderUcl(isAdmin){
         </div>
         <button class="btn" id="addUclBtn">Haftayı kaydet</button>
         <div class="save-status" id="uclStatus"></div>
-      </div>` : ""}
+      </div>` : "";
+
+  return `
+    <div class="section-title">UEFA Şampiyonlar Ligi oyunu</div>
+    ${total}
+    ${tabs}
+    ${panel}
+    ${form}
   `;
 }
 
@@ -1050,6 +1095,10 @@ function bindEvents(){
     };
   }
 
+  document.querySelectorAll("[data-ucltab]").forEach(btn=>{
+    btn.onclick = () => { state.uclTab = btn.dataset.ucltab; render(); };
+  });
+
   const addUclBtn = document.getElementById("addUclBtn");
   if (addUclBtn){
     addUclBtn.onclick = async () => {
@@ -1063,7 +1112,7 @@ function bindEvents(){
       state.ucl.push(w);
       addUclBtn.disabled = true;
       status.textContent = "Kaydediliyor…"; status.className = "save-status";
-      try{ await saveUcl(); render(); }
+      try{ state.uclTab = w.id; await saveUcl(); render(); }
       catch(e){
         state.ucl.pop();
         status.textContent = "Kaydedilemedi: " + e.message; status.className = "save-status error";
