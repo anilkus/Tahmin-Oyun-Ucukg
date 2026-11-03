@@ -132,6 +132,23 @@
   .ucl-tabs button.active{ color:var(--chalk); border-bottom-color:var(--amber); }
   .ucl-week-panel{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:16px; margin-bottom:10px; }
   .ucl-week-panel .wlabel{ text-align:center; font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .sc-card{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; }
+  .rainbow-card .sc-card{ border:none; margin:0; }
+  .sc-title{ font-family:'Oswald',sans-serif; font-size:16px; color:var(--chalk); margin-bottom:4px; }
+  .sc-status{ font-size:11px; color:var(--amber); margin-bottom:10px; }
+  .sc-cols{ display:flex; gap:10px; }
+  .sc-col{ flex:1; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; padding:10px 12px; }
+  .sc-col .sc-who{ font-size:12px; color:var(--muted); margin-bottom:6px; }
+  .sc-col .sc-p{ font-size:13px; color:var(--chalk-dim); padding:3px 0; display:flex; justify-content:space-between; align-items:center; gap:6px; }
+  .sc-col .sc-p input{ width:44px; text-align:center; padding:4px 0; background:var(--bg); border:1px solid var(--card-border); border-radius:6px; color:var(--chalk); font-size:13px; }
+  .sc-col .sc-sum{ margin-top:6px; padding-top:6px; border-top:1px solid var(--card-border); font-family:'Oswald',sans-serif; color:var(--amber); font-size:15px; }
+  .sc-actions{ display:flex; gap:8px; margin-top:12px; }
+  .sc-actions button{ flex:1; padding:9px 0; border-radius:8px; border:none; font-weight:600; font-size:13px; cursor:pointer; }
+  .sc-actions .ok{ background:var(--turf); color:#06210f; }
+  .sc-actions .no{ background:none; border:1px solid var(--card-border); color:var(--chalk-dim); }
+  .sc-form textarea{ width:100%; min-height:84px; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; font-family:'Inter',sans-serif; resize:vertical; }
+  .sc-form input{ width:100%; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
+  .sc-form label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
   .ucl-total{ background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; }
   .ucl-total .ucl-row{ display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:13px; color:var(--chalk-dim); }
   .ucl-total .ucl-row + .ucl-row{ border-top:1px solid var(--card-border); }
@@ -271,6 +288,7 @@ const suggestionsRef = db.ref("suggestions");
 const commentsRef = db.ref("comments");
 const otherBetsRef = db.ref("otherBets");
 const uclRef = db.ref("ucl");
+const scorersRef = db.ref("scorers");
 
 let state = {
   user: localStorage.getItem("skor_user") || null,
@@ -281,6 +299,7 @@ let state = {
   otherBets: [],
   ucl: [],
   uclTab: null,
+  scorers: [],
   keys: { anil: CONFIG.ANIL_KEY, semih: CONFIG.SEMIH_KEY },
   showPasswordForm: false,
   passwordMsg: "",
@@ -301,6 +320,10 @@ async function saveSuggestions(){
 
 async function saveComments(){
   await commentsRef.set(state.comments);
+}
+
+async function saveScorers(){
+  await scorersRef.set(state.scorers);
 }
 
 async function saveUcl(){
@@ -424,6 +447,8 @@ function renderLogin(){
 
     ${renderOtherBets(false)}
 
+    ${renderScorers(null)}
+
     ${renderUcl(false)}
 
     <div class="login-card">
@@ -510,6 +535,8 @@ function renderApp(){
     ${renderHeadToHead(list)}
 
     ${renderOtherBets(isAdmin)}
+
+    ${renderScorers(state.user)}
 
     ${renderUcl(isAdmin)}
 
@@ -615,6 +642,10 @@ function renderHeadToHead(list){
     if (b.winner === "anil") betAnil++;
     else if (b.winner === "semih") betSemih++;
   });
+  state.scorers.forEach(b => {
+    if (b.status === "done" && b.winner === "anil") betAnil++;
+    else if (b.status === "done" && b.winner === "semih") betSemih++;
+  });
   const anilWins = matchAnil + betAnil;
   const semihWins = matchSemih + betSemih;
   return `
@@ -629,6 +660,59 @@ function renderHeadToHead(list){
 }
 
 const WINNER_LABEL = { anil: "Anıl kazandı", semih: "Semih kazandı", draw: "Berabere" };
+
+function renderScorers(user){
+  const isAdmin = user === "anil";
+  const isSemih = user === "semih";
+  const list = state.scorers.slice().reverse().filter(b => b.status !== "proposed" || user);
+  const sum = (arr) => (arr||[]).reduce((a,n)=>a+Number(n||0),0);
+
+  const card = (b) => {
+    const ap = b.anilPlayers || [], sp = b.semihPlayers || [];
+    const goals = b.goals || {};
+    const ag = goals.anil || [], sg = goals.semih || [];
+    const done = b.status === "done";
+    const open = b.status === "open";
+    const col = (key, name, players, g) => `
+      <div class="sc-col">
+        <div class="sc-who">${name}</div>
+        ${players.map((pl,i) => `
+          <div class="sc-p"><span>${escapeHtml(pl)}</span>
+            ${done ? `<b>${Number(g[i]||0)}</b>` : (open && isAdmin ? `<input type="number" min="0" placeholder="0" class="sc-goal" data-scid="${b.id}" data-side="${key}" data-idx="${i}">` : "")}
+          </div>`).join("")}
+        ${done ? `<div class="sc-sum">${sum(g)} gol</div>` : ""}
+      </div>`;
+    const inner = `
+      <div class="sc-card">
+        <div class="sc-title">${escapeHtml(b.match)}</div>
+        <div class="sc-status">${b.status==="proposed" ? "Semih'in onayı bekleniyor" : (open ? "İddia açık, maç sonunu bekliyor" : "Sonuçlandı: " + (WINNER_LABEL[b.winner]||""))}</div>
+        <div class="sc-cols">${col("anil", PLAYERS.anil, ap, ag)}${col("semih", PLAYERS.semih, sp, sg)}</div>
+        ${b.status==="proposed" && isSemih ? `<div class="sc-actions"><button class="ok" data-scaccept="${b.id}">Kabul et</button><button class="no" data-screject="${b.id}">Reddet</button></div>` : ""}
+        ${b.status==="proposed" && isAdmin ? `<div class="sc-actions"><button class="no" data-scdel="${b.id}">Teklifi iptal et</button></div>` : ""}
+        ${open && isAdmin ? `<div class="sc-actions"><button class="ok" data-scresolve="${b.id}">Sonuçlandır</button><button class="no" data-scdel="${b.id}">Sil</button></div>` : ""}
+        ${done && isAdmin ? `<div class="sc-actions"><button class="no" data-scdel="${b.id}">Sil</button></div>` : ""}
+      </div>`;
+    return open ? `<div class="rainbow-card"><div class="rainbow-inner" style="padding:0;">${inner}</div></div>` : inner;
+  };
+
+  const form = isAdmin ? `
+    <div class="new-match sc-form">
+      <div class="section-inner-title">Kim gol atar bahsi öner</div>
+      <div style="margin-bottom:10px;"><label>Maç</label><input id="scMatch" placeholder="örn. Galatasaray - Barcelona"></div>
+      <div class="grid" style="margin-bottom:10px;">
+        <div><label>Anıl'ın oyuncuları (her satıra bir kişi)</label><textarea id="scAnil"></textarea></div>
+        <div><label>Semih'in oyuncuları (her satıra bir kişi)</label><textarea id="scSemih"></textarea></div>
+      </div>
+      <button class="btn" id="scProposeBtn">Semih'e öner</button>
+      <div class="save-status" id="scStatus"></div>
+    </div>` : "";
+
+  return `
+    <div class="section-title">Kim gol atar?</div>
+    ${list.length ? list.map(card).join("") : '<div class="empty">Henüz bahis yok.</div>'}
+    ${form}
+  `;
+}
 
 function renderUcl(isAdmin){
   const weeks = state.ucl.slice();
@@ -1099,6 +1183,68 @@ function bindEvents(){
     btn.onclick = () => { state.uclTab = btn.dataset.ucltab; render(); };
   });
 
+  const scProposeBtn = document.getElementById("scProposeBtn");
+  if (scProposeBtn){
+    scProposeBtn.onclick = async () => {
+      const status = document.getElementById("scStatus");
+      const match = document.getElementById("scMatch").value.trim();
+      const parse = id => document.getElementById(id).value.split(/\n|,/).map(s => s.trim()).filter(Boolean);
+      const ap = parse("scAnil"), sp = parse("scSemih");
+      if (!match){ status.textContent = "Maçı yaz."; status.className = "save-status error"; return; }
+      if (!ap.length || ap.length !== sp.length){
+        status.textContent = `Kişi sayısı eşit olmalı (Anıl ${ap.length}, Semih ${sp.length}).`; status.className = "save-status error"; return;
+      }
+      state.scorers.push({ id: String(Date.now()), match: filterProfanity(match), anilPlayers: ap, semihPlayers: sp, status: "proposed", createdAt: Date.now() });
+      scProposeBtn.disabled = true;
+      status.textContent = "Gönderiliyor…"; status.className = "save-status";
+      try{ await saveScorers(); render(); }
+      catch(e){ state.scorers.pop(); status.textContent = "Gönderilemedi: " + e.message; status.className = "save-status error"; scProposeBtn.disabled = false; }
+    };
+  }
+
+  const scChange = async (id, fn, errMsg) => {
+    const b = state.scorers.find(x => x.id === id);
+    if (!b) return;
+    const backup = JSON.stringify(state.scorers);
+    fn(b);
+    try{ await saveScorers(); render(); }
+    catch(e){ state.scorers = JSON.parse(backup); alert(errMsg + ": " + e.message); render(); }
+  };
+
+  document.querySelectorAll("[data-scaccept]").forEach(btn=>{
+    btn.onclick = () => { btn.disabled = true; scChange(btn.dataset.scaccept, b => { b.status = "open"; }, "Kabul edilemedi"); };
+  });
+  document.querySelectorAll("[data-screject]").forEach(btn=>{
+    btn.onclick = async () => {
+      const backup = state.scorers;
+      state.scorers = state.scorers.filter(x => x.id !== btn.dataset.screject);
+      btn.disabled = true;
+      try{ await saveScorers(); render(); }
+      catch(e){ state.scorers = backup; alert("Reddedilemedi: " + e.message); render(); }
+    };
+  });
+  document.querySelectorAll("[data-scdel]").forEach(btn=>{
+    btn.onclick = async () => {
+      if (!confirm("Bu bahis silinsin mi?")) return;
+      const backup = state.scorers;
+      state.scorers = state.scorers.filter(x => x.id !== btn.dataset.scdel);
+      btn.disabled = true;
+      try{ await saveScorers(); render(); }
+      catch(e){ state.scorers = backup; alert("Silinemedi: " + e.message); render(); }
+    };
+  });
+  document.querySelectorAll("[data-scresolve]").forEach(btn=>{
+    btn.onclick = () => {
+      const id = btn.dataset.scresolve;
+      const read = side => Array.from(document.querySelectorAll(`.sc-goal[data-scid="${id}"][data-side="${side}"]`)).map(i => Number(i.value || 0));
+      const ag = read("anil"), sg = read("semih");
+      const sa = ag.reduce((a,n)=>a+n,0), ss = sg.reduce((a,n)=>a+n,0);
+      const winner = sa > ss ? "anil" : (ss > sa ? "semih" : "draw");
+      btn.disabled = true;
+      scChange(id, b => { b.goals = { anil: ag, semih: sg }; b.winner = winner; b.status = "done"; }, "Sonuçlandırılamadı");
+    };
+  });
+
   const addUclBtn = document.getElementById("addUclBtn");
   if (addUclBtn){
     addUclBtn.onclick = async () => {
@@ -1389,6 +1535,11 @@ suggestionsRef.on("value", snap => {
 
 commentsRef.on("value", snap => {
   state.comments = snap.val() || [];
+  render();
+});
+
+scorersRef.on("value", snap => {
+  state.scorers = snap.val() || [];
   render();
 });
 
