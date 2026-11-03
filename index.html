@@ -146,6 +146,10 @@
   .sc-actions button{ flex:1; padding:9px 0; border-radius:8px; border:none; font-weight:600; font-size:13px; cursor:pointer; }
   .sc-actions .ok{ background:var(--turf); color:#06210f; }
   .sc-actions .no{ background:none; border:1px solid var(--card-border); color:var(--chalk-dim); }
+  .sc-scorers{ margin-bottom:10px; }
+  .sc-scorers label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+  .sc-scorers textarea{ width:100%; min-height:64px; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--amber); border-radius:8px; color:var(--chalk); font-size:14px; font-family:'Inter',sans-serif; resize:vertical; }
+  .sc-note{ font-size:12px; color:var(--danger); margin-top:4px; min-height:14px; }
   .sc-form textarea{ width:100%; min-height:84px; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; font-family:'Inter',sans-serif; resize:vertical; }
   .sc-form input{ width:100%; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
   .sc-form label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
@@ -300,6 +304,9 @@ let state = {
   ucl: [],
   uclTab: null,
   scorers: [],
+  scDraft: { match: "", anil: "", semih: "" },
+  scGoalDraft: {},
+  scScorerDraft: {},
   keys: { anil: CONFIG.ANIL_KEY, semih: CONFIG.SEMIH_KEY },
   showPasswordForm: false,
   passwordMsg: "",
@@ -678,7 +685,7 @@ function renderScorers(user){
         <div class="sc-who">${name}</div>
         ${players.map((pl,i) => `
           <div class="sc-p"><span>${escapeHtml(pl)}</span>
-            ${done ? `<b>${Number(g[i]||0)}</b>` : (open && isAdmin ? `<input type="number" min="0" placeholder="0" class="sc-goal" data-scid="${b.id}" data-side="${key}" data-idx="${i}">` : "")}
+            ${done ? `<b>${Number(g[i]||0)}</b>` : (open && isAdmin ? `<input type="number" min="0" placeholder="0" class="sc-goal" data-scid="${b.id}" data-side="${key}" data-idx="${i}" value="${state.scGoalDraft[b.id+'|'+key+'|'+i] ?? ''}">` : "")}
           </div>`).join("")}
         ${done ? `<div class="sc-sum">${sum(g)} gol</div>` : ""}
       </div>`;
@@ -686,6 +693,12 @@ function renderScorers(user){
       <div class="sc-card">
         <div class="sc-title">${escapeHtml(b.match)}</div>
         <div class="sc-status">${b.status==="proposed" ? "Semih'in onayı bekleniyor" : (open ? "İddia açık, maç sonunu bekliyor" : "Sonuçlandı: " + (WINNER_LABEL[b.winner]||""))}</div>
+        ${open && isAdmin ? `
+          <div class="sc-scorers">
+            <label>Gol atanları yaz (her satıra bir isim, iki gol attıysa iki kere yaz)</label>
+            <textarea class="sc-scorer-text" data-scid="${b.id}" placeholder="Icardi&#10;Arda Güler">${escapeHtml(state.scScorerDraft[b.id] || "")}</textarea>
+            <div class="sc-note" id="scNote-${b.id}"></div>
+          </div>` : ""}
         <div class="sc-cols">${col("anil", PLAYERS.anil, ap, ag)}${col("semih", PLAYERS.semih, sp, sg)}</div>
         ${b.status==="proposed" && isSemih ? `<div class="sc-actions"><button class="ok" data-scaccept="${b.id}">Kabul et</button><button class="no" data-screject="${b.id}">Reddet</button></div>` : ""}
         ${b.status==="proposed" && isAdmin ? `<div class="sc-actions"><button class="no" data-scdel="${b.id}">Teklifi iptal et</button></div>` : ""}
@@ -698,10 +711,10 @@ function renderScorers(user){
   const form = isAdmin ? `
     <div class="new-match sc-form">
       <div class="section-inner-title">Kim gol atar bahsi öner</div>
-      <div style="margin-bottom:10px;"><label>Maç</label><input id="scMatch" placeholder="örn. Galatasaray - Barcelona"></div>
+      <div style="margin-bottom:10px;"><label>Maç</label><input id="scMatch" placeholder="örn. Galatasaray - Barcelona" value="${escapeHtml(state.scDraft.match)}"></div>
       <div class="grid" style="margin-bottom:10px;">
-        <div><label>Anıl'ın oyuncuları (her satıra bir kişi)</label><textarea id="scAnil"></textarea></div>
-        <div><label>Semih'in oyuncuları (her satıra bir kişi)</label><textarea id="scSemih"></textarea></div>
+        <div><label>Anıl'ın oyuncuları (her satıra bir kişi)</label><textarea id="scAnil" placeholder="Icardi&#10;Osimhen&#10;Mertens">${escapeHtml(state.scDraft.anil)}</textarea></div>
+        <div><label>Semih'in oyuncuları (her satıra bir kişi)</label><textarea id="scSemih" placeholder="Arda Güler&#10;Yılmaz&#10;Kerem">${escapeHtml(state.scDraft.semih)}</textarea></div>
       </div>
       <button class="btn" id="scProposeBtn">Semih'e öner</button>
       <div class="save-status" id="scStatus"></div>
@@ -1191,13 +1204,16 @@ function bindEvents(){
       const parse = id => document.getElementById(id).value.split(/\n|,/).map(s => s.trim()).filter(Boolean);
       const ap = parse("scAnil"), sp = parse("scSemih");
       if (!match){ status.textContent = "Maçı yaz."; status.className = "save-status error"; return; }
-      if (!ap.length || ap.length !== sp.length){
+      if (!ap.length || !sp.length){
+        status.textContent = "Her iki kutuya da oyuncu isimlerini yaz, her satıra bir kişi."; status.className = "save-status error"; return;
+      }
+      if (ap.length !== sp.length){
         status.textContent = `Kişi sayısı eşit olmalı (Anıl ${ap.length}, Semih ${sp.length}).`; status.className = "save-status error"; return;
       }
       state.scorers.push({ id: String(Date.now()), match: filterProfanity(match), anilPlayers: ap, semihPlayers: sp, status: "proposed", createdAt: Date.now() });
       scProposeBtn.disabled = true;
       status.textContent = "Gönderiliyor…"; status.className = "save-status";
-      try{ await saveScorers(); render(); }
+      try{ await saveScorers(); state.scDraft = { match: "", anil: "", semih: "" }; render(); }
       catch(e){ state.scorers.pop(); status.textContent = "Gönderilemedi: " + e.message; status.className = "save-status error"; scProposeBtn.disabled = false; }
     };
   }
@@ -1536,6 +1552,48 @@ suggestionsRef.on("value", snap => {
 commentsRef.on("value", snap => {
   state.comments = snap.val() || [];
   render();
+});
+
+const trNorm = s => String(s).toLocaleLowerCase("tr").replace(/\s+/g, " ").trim();
+
+function applyScorerText(id){
+  const b = state.scorers.find(x => x.id === id);
+  const ta = document.querySelector(`.sc-scorer-text[data-scid="${id}"]`);
+  if (!b || !ta) return;
+  const lines = ta.value.split(/\n|,/).map(trNorm).filter(Boolean);
+  const used = new Array(lines.length).fill(false);
+  const matches = (typed, name) => {
+    const n = trNorm(name);
+    return typed === n || n.split(" ").includes(typed);
+  };
+  [["anil", b.anilPlayers || []], ["semih", b.semihPlayers || []]].forEach(([side, players]) => {
+    players.forEach((name, idx) => {
+      let count = 0;
+      lines.forEach((l, li) => { if (matches(l, name)){ count++; used[li] = true; } });
+      const input = document.querySelector(`.sc-goal[data-scid="${id}"][data-side="${side}"][data-idx="${idx}"]`);
+      if (input){
+        input.value = count ? String(count) : "";
+        state.scGoalDraft[id+"|"+side+"|"+idx] = input.value;
+      }
+    });
+  });
+  const unknown = lines.filter((l, i) => !used[i]);
+  const note = document.getElementById("scNote-" + id);
+  if (note) note.textContent = unknown.length ? "Listede olmayan: " + unknown.join(", ") + " (kimseye yazılmadı)" : "";
+}
+
+document.addEventListener("input", e => {
+  const t = e.target;
+  const id = t && t.id;
+  if (id === "scMatch") state.scDraft.match = t.value;
+  else if (id === "scAnil") state.scDraft.anil = t.value;
+  else if (id === "scSemih") state.scDraft.semih = t.value;
+  else if (t && t.classList && t.classList.contains("sc-goal")){
+    state.scGoalDraft[t.dataset.scid+"|"+t.dataset.side+"|"+t.dataset.idx] = t.value;
+  } else if (t && t.classList && t.classList.contains("sc-scorer-text")){
+    state.scScorerDraft[t.dataset.scid] = t.value;
+    applyScorerText(t.dataset.scid);
+  }
 });
 
 scorersRef.on("value", snap => {
