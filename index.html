@@ -150,6 +150,8 @@
   .sc-scorers label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
   .sc-scorers textarea{ width:100%; min-height:64px; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--amber); border-radius:8px; color:var(--chalk); font-size:14px; font-family:'Inter',sans-serif; resize:vertical; }
   .sc-note{ font-size:12px; color:var(--danger); margin-top:4px; min-height:14px; }
+  .sc-pick{ width:100%; min-height:90px; padding:8px 10px; background:var(--bg); border:1px solid var(--amber); border-radius:8px; color:var(--chalk); font-size:13px; font-family:'Inter',sans-serif; resize:vertical; }
+  .sc-hint{ font-size:12px; color:var(--muted); margin-bottom:10px; }
   .sc-form textarea{ width:100%; min-height:84px; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; font-family:'Inter',sans-serif; resize:vertical; }
   .sc-form input{ width:100%; padding:10px 12px; background:var(--bg-alt); border:1px solid var(--card-border); border-radius:8px; color:var(--chalk); font-size:14px; }
   .sc-form label{ font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
@@ -307,6 +309,7 @@ let state = {
   scDraft: { match: "", anil: "", semih: "" },
   scGoalDraft: {},
   scScorerDraft: {},
+  scPickDraft: {},
   keys: { anil: CONFIG.ANIL_KEY, semih: CONFIG.SEMIH_KEY },
   showPasswordForm: false,
   passwordMsg: "",
@@ -671,8 +674,21 @@ const WINNER_LABEL = { anil: "Anıl kazandı", semih: "Semih kazandı", draw: "B
 function renderScorers(user){
   const isAdmin = user === "anil";
   const isSemih = user === "semih";
-  const list = state.scorers.slice().reverse().filter(b => b.status !== "proposed" || user);
+  const list = state.scorers.slice().reverse().filter(b => b.status !== "proposed" && b.status !== "picking" || user);
   const sum = (arr) => (arr||[]).reduce((a,n)=>a+Number(n||0),0);
+
+  const pickBox = (b, key, name, players, canEdit) => {
+    const dk = b.id + "|" + key;
+    const val = state.scPickDraft[dk] !== undefined ? state.scPickDraft[dk] : players.join("\n");
+    return `
+      <div class="sc-col">
+        <div class="sc-who">${name}${canEdit ? " (sen yaz)" : ""}</div>
+        ${canEdit
+          ? `<textarea class="sc-pick" data-scid="${b.id}" data-side="${key}" placeholder="Her satıra bir kişi">${escapeHtml(val)}</textarea>`
+          : (players.length ? players.map(pl => `<div class="sc-p"><span>${escapeHtml(pl)}</span></div>`).join("") : `<div class="sc-p" style="color:var(--muted);">Henüz yazılmadı</div>`)}
+        <div class="sc-sum">${players.length} kişi</div>
+      </div>`;
+  };
 
   const card = (b) => {
     const ap = b.anilPlayers || [], sp = b.semihPlayers || [];
@@ -680,6 +696,7 @@ function renderScorers(user){
     const ag = goals.anil || [], sg = goals.semih || [];
     const done = b.status === "done";
     const open = b.status === "open";
+    const picking = b.status === "picking";
     const col = (key, name, players, g) => `
       <div class="sc-col">
         <div class="sc-who">${name}</div>
@@ -689,10 +706,24 @@ function renderScorers(user){
           </div>`).join("")}
         ${done ? `<div class="sc-sum">${sum(g)} gol</div>` : ""}
       </div>`;
-    const inner = `
-      <div class="sc-card">
-        <div class="sc-title">${escapeHtml(b.match)}</div>
-        <div class="sc-status">${b.status==="proposed" ? "Semih'in onayı bekleniyor" : (open ? "İddia açık, maç sonunu bekliyor" : "Sonuçlandı: " + (WINNER_LABEL[b.winner]||""))}</div>
+    const statusText = b.status==="proposed" ? "Semih'in onayı bekleniyor"
+      : picking ? "Semih kabul etti. Oyuncuları yazın, iki tarafta kişi sayısı eşit olmalı"
+      : open ? "İddia açık, maç sonunu bekliyor"
+      : "Sonuçlandı: " + (WINNER_LABEL[b.winner]||"");
+    let body;
+    if (picking){
+      body = `
+        <div class="sc-cols">
+          ${pickBox(b, "anil", PLAYERS.anil, ap, isAdmin)}
+          ${pickBox(b, "semih", PLAYERS.semih, sp, isSemih || isAdmin)}
+        </div>
+        <div class="sc-note" id="scPickNote-${b.id}"></div>
+        <div class="sc-actions">
+          ${(isAdmin || isSemih) ? `<button class="no" data-scpicksave="${b.id}">Listemi kaydet</button>` : ""}
+          ${isAdmin ? `<button class="ok" data-scstart="${b.id}">Bahsi aç</button><button class="no" data-scdel="${b.id}">Sil</button>` : ""}
+        </div>`;
+    } else {
+      body = `
         ${open && isAdmin ? `
           <div class="sc-scorers">
             <label>Gol atanları yaz (her satıra bir isim, iki gol attıysa iki kere yaz)</label>
@@ -703,7 +734,13 @@ function renderScorers(user){
         ${b.status==="proposed" && isSemih ? `<div class="sc-actions"><button class="ok" data-scaccept="${b.id}">Kabul et</button><button class="no" data-screject="${b.id}">Reddet</button></div>` : ""}
         ${b.status==="proposed" && isAdmin ? `<div class="sc-actions"><button class="no" data-scdel="${b.id}">Teklifi iptal et</button></div>` : ""}
         ${open && isAdmin ? `<div class="sc-actions"><button class="ok" data-scresolve="${b.id}">Sonuçlandır</button><button class="no" data-scdel="${b.id}">Sil</button></div>` : ""}
-        ${done && isAdmin ? `<div class="sc-actions"><button class="no" data-scdel="${b.id}">Sil</button></div>` : ""}
+        ${done && isAdmin ? `<div class="sc-actions"><button class="no" data-scdel="${b.id}">Sil</button></div>` : ""}`;
+    }
+    const inner = `
+      <div class="sc-card">
+        <div class="sc-title">${escapeHtml(b.match)}</div>
+        <div class="sc-status">${statusText}</div>
+        ${body}
       </div>`;
     return open ? `<div class="rainbow-card"><div class="rainbow-inner" style="padding:0;">${inner}</div></div>` : inner;
   };
@@ -712,10 +749,7 @@ function renderScorers(user){
     <div class="new-match sc-form">
       <div class="section-inner-title">Kim gol atar bahsi öner</div>
       <div style="margin-bottom:10px;"><label>Maç</label><input id="scMatch" placeholder="örn. Galatasaray - Barcelona" value="${escapeHtml(state.scDraft.match)}"></div>
-      <div class="grid" style="margin-bottom:10px;">
-        <div><label>Anıl'ın oyuncuları (her satıra bir kişi)</label><textarea id="scAnil" placeholder="Icardi&#10;Osimhen&#10;Mertens">${escapeHtml(state.scDraft.anil)}</textarea></div>
-        <div><label>Semih'in oyuncuları (her satıra bir kişi)</label><textarea id="scSemih" placeholder="Arda Güler&#10;Yılmaz&#10;Kerem">${escapeHtml(state.scDraft.semih)}</textarea></div>
-      </div>
+      <div class="sc-hint">Oyuncuları şimdi yazman gerekmiyor, Semih kabul edince birlikte yazarsınız.</div>
       <button class="btn" id="scProposeBtn">Semih'e öner</button>
       <div class="save-status" id="scStatus"></div>
     </div>` : "";
@@ -1201,16 +1235,8 @@ function bindEvents(){
     scProposeBtn.onclick = async () => {
       const status = document.getElementById("scStatus");
       const match = document.getElementById("scMatch").value.trim();
-      const parse = id => document.getElementById(id).value.split(/\n|,/).map(s => s.trim()).filter(Boolean);
-      const ap = parse("scAnil"), sp = parse("scSemih");
       if (!match){ status.textContent = "Maçı yaz."; status.className = "save-status error"; return; }
-      if (!ap.length || !sp.length){
-        status.textContent = "Her iki kutuya da oyuncu isimlerini yaz, her satıra bir kişi."; status.className = "save-status error"; return;
-      }
-      if (ap.length !== sp.length){
-        status.textContent = `Kişi sayısı eşit olmalı (Anıl ${ap.length}, Semih ${sp.length}).`; status.className = "save-status error"; return;
-      }
-      state.scorers.push({ id: String(Date.now()), match: filterProfanity(match), anilPlayers: ap, semihPlayers: sp, status: "proposed", createdAt: Date.now() });
+      state.scorers.push({ id: String(Date.now()), match: filterProfanity(match), status: "proposed", createdAt: Date.now() });
       scProposeBtn.disabled = true;
       status.textContent = "Gönderiliyor…"; status.className = "save-status";
       try{ await saveScorers(); state.scDraft = { match: "", anil: "", semih: "" }; render(); }
@@ -1227,8 +1253,43 @@ function bindEvents(){
     catch(e){ state.scorers = JSON.parse(backup); alert(errMsg + ": " + e.message); render(); }
   };
 
+  const parsePick = id => {
+    const out = {};
+    ["anil","semih"].forEach(side => {
+      const ta = document.querySelector(`.sc-pick[data-scid="${id}"][data-side="${side}"]`);
+      if (ta) out[side] = ta.value.split(/\n|,/).map(s => s.trim()).filter(Boolean);
+    });
+    return out;
+  };
+  document.querySelectorAll("[data-scpicksave]").forEach(btn=>{
+    btn.onclick = () => {
+      const id = btn.dataset.scpicksave;
+      const got = parsePick(id);
+      btn.disabled = true;
+      scChange(id, b => {
+        if (got.anil) b.anilPlayers = got.anil;
+        if (got.semih) b.semihPlayers = got.semih;
+        delete state.scPickDraft[id+"|anil"]; delete state.scPickDraft[id+"|semih"];
+      }, "Kaydedilemedi");
+    };
+  });
+  document.querySelectorAll("[data-scstart]").forEach(btn=>{
+    btn.onclick = () => {
+      const id = btn.dataset.scstart;
+      const got = parsePick(id);
+      const b0 = state.scorers.find(x => x.id === id);
+      const ap = got.anil || (b0.anilPlayers || []);
+      const sp = got.semih || (b0.semihPlayers || []);
+      const note = document.getElementById("scPickNote-" + id);
+      if (!ap.length || !sp.length){ note.textContent = "İki tarafa da oyuncu yazılmalı."; return; }
+      if (ap.length !== sp.length){ note.textContent = `Kişi sayısı eşit olmalı (Anıl ${ap.length}, Semih ${sp.length}).`; return; }
+      btn.disabled = true;
+      scChange(id, b => { b.anilPlayers = ap; b.semihPlayers = sp; b.status = "open"; delete state.scPickDraft[id+"|anil"]; delete state.scPickDraft[id+"|semih"]; }, "Bahis açılamadı");
+    };
+  });
+
   document.querySelectorAll("[data-scaccept]").forEach(btn=>{
-    btn.onclick = () => { btn.disabled = true; scChange(btn.dataset.scaccept, b => { b.status = "open"; }, "Kabul edilemedi"); };
+    btn.onclick = () => { btn.disabled = true; scChange(btn.dataset.scaccept, b => { b.status = "picking"; }, "Kabul edilemedi"); };
   });
   document.querySelectorAll("[data-screject]").forEach(btn=>{
     btn.onclick = async () => {
@@ -1588,7 +1649,9 @@ document.addEventListener("input", e => {
   if (id === "scMatch") state.scDraft.match = t.value;
   else if (id === "scAnil") state.scDraft.anil = t.value;
   else if (id === "scSemih") state.scDraft.semih = t.value;
-  else if (t && t.classList && t.classList.contains("sc-goal")){
+  else if (t && t.classList && t.classList.contains("sc-pick")){
+    state.scPickDraft[t.dataset.scid+"|"+t.dataset.side] = t.value;
+  } else if (t && t.classList && t.classList.contains("sc-goal")){
     state.scGoalDraft[t.dataset.scid+"|"+t.dataset.side+"|"+t.dataset.idx] = t.value;
   } else if (t && t.classList && t.classList.contains("sc-scorer-text")){
     state.scScorerDraft[t.dataset.scid] = t.value;
